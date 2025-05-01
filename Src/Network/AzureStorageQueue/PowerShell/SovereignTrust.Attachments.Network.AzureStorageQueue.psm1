@@ -131,6 +131,6 @@ Export-ModuleMember -Function 'Remove-FileFromFileSystem'
 Export-ModuleMember -Function 'Get-FileListFromDirectory'
 
 ############################CLASS_LOADS############
-. "$PSScriptRoot/Storage_LocalFileSystem.ps1"
+. "$PSScriptRoot/LocalFileSystem.ps1"
 
 

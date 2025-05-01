@@ -1,7 +1,7 @@
-class LocalFileSystem {
+class Storage_LocalFileSystem {
     [object]$Jacket
 
-    LocalFileSystem() {
+    Storage_LocalFileSystem() {
         # Empty constructor for flexibility
     }
 
