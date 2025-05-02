@@ -1,0 +1,43 @@
+{
+    "Identity": {
+        "Name": "SovereignTrust.Attachments.Storage.LocalFileSystem",
+        "EID": 3114,
+        "ECode": [
+            "🌇"
+        ],
+        "ELineage": [
+            [
+                "🌌"
+            ]
+        ],
+        "ID": 1001809,
+        "Code": "EMmN",
+        "Lineage": "SDA"
+    },
+    "Lineage": {
+        "Publisher": {
+            "Level": "Publisher",
+            "Code": "EMmM",
+            "Name": "SDA",
+            "ECode": [
+                "🌌"
+            ],
+            "Entry": 1
+        }
+    },
+    "Classes": [
+        {
+            "Name": "Network_AzureStorageQueue",
+            "Source": "Network_AzureStorageQueue.ps1"
+        }
+    ],
+    "Dependencies": {
+        "DotNet": [
+            {
+                "Name": "System.Memory.Data",
+                "Version": "6.0.1",
+                "TargetFramework": "netstandard2.0"
+            }
+        ]
+    }
+}
