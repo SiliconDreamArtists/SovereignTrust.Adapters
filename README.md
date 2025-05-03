@@ -1,2 +1,2 @@
-# SovereignTrust.Attachments
+# SovereignTrust.Adapters
  
