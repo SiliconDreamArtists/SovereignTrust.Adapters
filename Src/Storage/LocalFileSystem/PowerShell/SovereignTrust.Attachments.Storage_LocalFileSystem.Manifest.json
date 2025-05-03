@@ -39,5 +39,9 @@
                 "TargetFramework": "netstandard2.0"
             }
         ]
-    }
+    },
+    "HydrationAdapters": [
+        {
+        }
+    ]
 }
