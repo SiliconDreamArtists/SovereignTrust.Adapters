@@ -3,8 +3,8 @@ if ($root -ne (Get-Location).Path) {
     Set-Location $root
 }
 
-New-ModuleManifest -Path ./SovereignTrust.Attachments.Storage.LocalFileSystem.psd1 `
-  -RootModule 'SovereignTrust.Attachments.Storage.LocalFileSystem.psm1' `
+New-ModuleManifest -Path ./SovereignTrust.Adapters.Storage.LocalFileSystem.psd1 `
+  -RootModule 'SovereignTrust.Adapters.Storage.LocalFileSystem.psm1' `
   -ModuleVersion '1.0.0' `
   -Author 'Silicon Dream Artists' `
   -CompanyName 'Silicon Dream Artists' `
@@ -15,8 +15,8 @@ New-ModuleManifest -Path ./SovereignTrust.Attachments.Storage.LocalFileSystem.ps
   -CompatiblePSEditions 'Core' `
   -PowerShellVersion '5.1'
 
-  Invoke-SurfaceFunctionExports -OutputFile 'SovereignTrust.Attachments.Storage.LocalFileSystem.psm1' -Root $PSScriptRoot
-  Invoke-SurfaceClassLoads -OutputFile 'SovereignTrust.Attachments.Storage.LocalFileSystem.psm1' -Root $PSScriptRoot
+  Invoke-SurfaceFunctionExports -OutputFile 'SovereignTrust.Adapters.Storage.LocalFileSystem.psm1' -Root $PSScriptRoot
+  Invoke-SurfaceClassLoads -OutputFile 'SovereignTrust.Adapters.Storage.LocalFileSystem.psm1' -Root $PSScriptRoot
   
 
   

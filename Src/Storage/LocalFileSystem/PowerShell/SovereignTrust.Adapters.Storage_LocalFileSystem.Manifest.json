@@ -1,6 +1,6 @@
 {
     "Identity": {
-        "Name": "SovereignTrust.Attachments.Storage.LocalFileSystem",
+        "Name": "SovereignTrust.Adapters.Storage.LocalFileSystem",
         "EID": 3114,
         "ECode": [
             "🌇"

@@ -1,9 +1,9 @@
 {
-    "VirtualPath": "SovereignTrust.Attachments.Network.AzureStorageQueue",
+    "VirtualPath": "SovereignTrust.Adapters.Network.AzureStorageQueue",
     "Module": {
         "Name": "Network_AzureStorageQueue",
-        "RelativePath": "SovereignTrust.Attachments/Src/Storage/Network/AzureStorageQueue/PowerShell",
-        "Entry": "SovereignTrust.Attachments.Network_AzureStorageQueue.psd1"
+        "RelativePath": "SovereignTrust.Adapters/Src/Storage/Network/AzureStorageQueue/PowerShell",
+        "Entry": "SovereignTrust.Adapters.Network_AzureStorageQueue.psd1"
     },
     "Classes": [
         {

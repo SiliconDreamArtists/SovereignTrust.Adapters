@@ -1,6 +1,6 @@
 # =============================================================================
 # LocalFileSystem Storage Module (Signal Compliant)
-# SovereignTrust Attachments • SDA Standard Storage Attachment
+# SovereignTrust Adapters • SDA Standard Storage Adapter
 # =============================================================================
 
 # --- Internal Tools ---
@@ -123,7 +123,7 @@ function Get-FileListFromDirectory {
     return $signal
 }
 
-############################SovereignTrust.Attachments.Storage.LocalFileSystem.psm1############
+############################SovereignTrust.Adapters.Storage.LocalFileSystem.psm1############
 Export-ModuleMember -Function 'Get-VirtualFilePath'
 Export-ModuleMember -Function 'Get-JsonFromFile'
 Export-ModuleMember -Function 'Get-XmlFromFile'
