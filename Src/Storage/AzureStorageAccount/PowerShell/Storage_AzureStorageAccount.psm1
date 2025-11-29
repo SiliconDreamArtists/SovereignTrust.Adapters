@@ -1,9 +1,8 @@
 
 #. "$PSScriptRoot\Storage_AzureStorageAccount.ps1"
-
 class Storage_AzureStorageAccount {
     [MappedStorageAdapter]$MappedAdapter
-    [object]$Jacket
+    [Signal]$Signal
 
     Storage_AzureStorageAccount() {
     }
@@ -13,14 +12,19 @@ class Storage_AzureStorageAccount {
     }
 
     [Signal] Construct([object]$dictionary) {
-         $opSignal = [Signal]::Start("Construct-Storage_AzureStorageAccount") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1
 
         try {
             if ($null -eq $dictionary) {
                 return $opSignal.LogCritical("Cannot construct Storage_AzureStorageAccount — provided dictionary is null.")
             }
 
-            $this.Jacket = $dictionary
+            $this.Signal = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1
+
+            $jacket = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1 
+            
+            $this.Signal.SetJacket($jacket)
+            $jacket.SetResult($dictionary)
             $opSignal.LogInformation("Storage_AzureStorageAccount constructed successfully with provided jacket.")
         }
         catch {
@@ -62,7 +66,7 @@ class Storage_AzureStorageAccount {
             }
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Storage_AzureStorageAccount.ReadObjectAsJson: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)")
         }
 
         return $opSignal
@@ -95,13 +99,12 @@ class Storage_AzureStorageAccount {
             $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Storage_AzureStorageAccount.ReadObject: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)")
         }
 
         return $opSignal
     }
 }
-
 
 function Resolve-Storage_AzureStorageAccount()
 {

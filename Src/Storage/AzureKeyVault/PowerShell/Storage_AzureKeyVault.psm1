@@ -1,113 +1,117 @@
 
-#. "$PSScriptRoot\Storage_AzureKeyVault.ps1"
+    #. "$PSScriptRoot\Storage_AzureKeyVault.ps1"
 
-class Storage_AzureKeyVault {
-    [MappedStorageAdapter]$MappedAdapter
-    [object]$Jacket
+    class Storage_AzureKeyVault {
+        [MappedStorageAdapter]$MappedAdapter
+        [Signal]$Signal
 
-    Storage_AzureKeyVault() {
-    }
-
-    Storage_AzureKeyVault([MappedStorageAdapter]$mappedAdapter) {
-        $this.MappedAdapter = $mappedAdapter
-    }
-
-    [Signal] Construct([object]$dictionary) {
-        $opSignal = [Signal]::Start("Construct-Storage_AzureKeyVault") | Select-Object -Last 1
-
-        try {
-            if ($null -eq $dictionary) {
-                return $opSignal.LogCritical("Cannot construct Storage_AzureKeyVault — provided dictionary is null.")
-            }
-
-            $this.Jacket = $dictionary
-            $opSignal.LogInformation("Storage_AzureKeyVault constructed successfully with provided jacket.")
-        }
-        catch {
-            $opSignal.LogCritical("Error constructing Storage_AzureKeyVault: $_")
+        Storage_AzureKeyVault() {
         }
 
-        return $opSignal
-    }
+        Storage_AzureKeyVault([MappedStorageAdapter]$mappedAdapter) {
+            $this.MappedAdapter = $mappedAdapter
+        }
 
-    [Signal] ReadObjectAsJson([string]$virtualPath) {
-        $opSignal = [Signal]::Start("Storage_AzureKeyVault.ReadObjectAsJson") | Select-Object -Last 1
+        [Signal] Construct([object]$dictionary) {
+            $opSignal = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1
 
-        try {
-            # 🧠 Ensure the virtual path ends with '.json'
-            if (-not $virtualPath.ToLower().EndsWith(".json")) {
-                $virtualPath = "$virtualPath.json"
-            }
-
-            # 🔁 Read raw content using internal ReadObject
-            $rawSignal = $this.ReadObject($virtualPath) | Select-Object -Last 1
-            $opSignal.MergeSignal($rawSignal)
-
-            if ($rawSignal.Success()) {
-                $jsonText = $rawSignal.GetResult()
-                $parsed = $null
-
-                try {
-                    $parsed = $jsonText | ConvertFrom-Json -Depth 20
-                }
-                catch {
-                    return $opSignal.LogCritical("❌ Failed to parse JSON content: $($_.Exception.Message)")
+            try {
+                if ($null -eq $dictionary) {
+                    return $opSignal.LogCritical("Cannot construct Storage_AzureKeyVault — provided dictionary is null.")
                 }
 
-                $opSignal.SetResult($parsed)
-                $opSignal.LogInformation("📄 JSON content parsed successfully from: $virtualPath")
+                $this.Signal = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1
+
+                $jacket = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1 
+                
+                $this.Signal.SetJacket($jacket)
+                $jacket.SetResult($dictionary)
+                $opSignal.LogInformation("Storage_AzureKeyVault constructed successfully with provided jacket.")
             }
-            else {
-                $opSignal.LogWarning("⚠️ No raw content found at: $virtualPath")
+            catch {
+                $opSignal.LogCritical("Error constructing Storage_AzureKeyVault: $_")
             }
+
+            return $opSignal
         }
-        catch {
-            $opSignal.LogCritical("🔥 Exception in Storage_AzureKeyVault.ReadObjectAsJson: $($_.Exception.Message)")
-        }
 
-        return $opSignal
-    }
+        [Signal] ReadObjectAsJson([string]$virtualPath) {
+            $opSignal = [Signal]::Start("EmbeddedFileSystem.ReadObjectAsJson") | Select-Object -Last 1
 
-    [Signal] ReadObject([string]$virtualPath) {
-        $opSignal = [Signal]::Start("Storage_AzureKeyVault.ReadObject") | Select-Object -Last 1
+            try {
+                # 🧠 Ensure the virtual path ends with '.json'
+                if (-not $virtualPath.ToLower().EndsWith(".json")) {
+                    $virtualPath = "$virtualPath.json"
+                }
 
-        try {
-            # ░▒▓█ RESOLVE ADDRESSES FROM %.@.Addresses █▓▒░
-            $addressSignal = Resolve-PathFromDictionary -Dictionary $this -Path '%.@.Addresses' | Select-Object -Last 1
-            if ($opSignal.MergeSignalAndVerifyFailure(@($addressSignal))) {
-                return $opSignal.LogCritical("❌ Could not resolve Jacket.Addresses path.")
-            }
+                # 🔁 Read raw content using internal ReadObject
+                $rawSignal = $this.ReadObject($virtualPath) | Select-Object -Last 1
+                $opSignal.MergeSignal($rawSignal)
 
-            $addresses = $addressSignal.GetResult()
-            $pathWithExtension = "$virtualPath.json"
+                if ($rawSignal.Success()) {
+                    $jsonText = $rawSignal.GetResult()
+                    $parsed = $null
 
-            foreach ($address in $addresses) {
-                $fullPath = Join-Path -Path $address -ChildPath $pathWithExtension
+                    try {
+                        $parsed = $jsonText | ConvertFrom-Json -Depth 20
+                    }
+                    catch {
+                        return $opSignal.LogCritical("❌ Failed to parse JSON content: $($_.Exception.Message)")
+                    }
 
-                if (Test-Path -Path $fullPath) {
-                    $content = Get-Content -Path $fullPath -Raw
-                    $opSignal.SetResult($content)
-                    $opSignal.LogInformation("📄 Found and read file: $fullPath")
-                    return $opSignal
+                    $opSignal.SetResult($parsed)
+                    $opSignal.LogInformation("📄 JSON content parsed successfully from: $virtualPath")
+                }
+                else {
+                    $opSignal.LogWarning("⚠️ No raw content found at: $virtualPath")
                 }
             }
+            catch {
+                $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)")
+            }
 
-            $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
-        }
-        catch {
-            $opSignal.LogCritical("🔥 Exception in Storage_AzureKeyVault.ReadObject: $($_.Exception.Message)")
+            return $opSignal
         }
 
-        return $opSignal
+        [Signal] ReadObject([string]$virtualPath) {
+            $opSignal = [Signal]::Start("EmbeddedFileSystem.ReadObject") | Select-Object -Last 1
+
+            try {
+                # ░▒▓█ RESOLVE ADDRESSES FROM %.@.Addresses █▓▒░
+                $addressSignal = Resolve-PathFromDictionary -Dictionary $this -Path '%.@.Addresses' | Select-Object -Last 1
+                if ($opSignal.MergeSignalAndVerifyFailure(@($addressSignal))) {
+                    return $opSignal.LogCritical("❌ Could not resolve Jacket.Addresses path.")
+                }
+
+                $addresses = $addressSignal.GetResult()
+                $pathWithExtension = "$virtualPath.json"
+
+                foreach ($address in $addresses) {
+                    $fullPath = Join-Path -Path $address -ChildPath $pathWithExtension
+
+                    if (Test-Path -Path $fullPath) {
+                        $content = Get-Content -Path $fullPath -Raw
+                        $opSignal.SetResult($content)
+                        $opSignal.LogInformation("📄 Found and read file: $fullPath")
+                        return $opSignal
+                    }
+                }
+
+                $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
+            }
+            catch {
+                $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)")
+            }
+
+            return $opSignal
+        }
     }
-}
 
+    function Resolve-Storage_AzureKeyVault()
+    {
+        $object = [Storage_AzureKeyVault]::new()
+        return $object
+    }
 
-function Resolve-Storage_AzureKeyVault()
-{
-    $object = [Storage_AzureKeyVault]::new()
-    return $object
-}
-
-Export-ModuleMember -Function  Resolve-Storage_AzureKeyVault
+    Export-ModuleMember -Function  Resolve-Storage_AzureKeyVault
 

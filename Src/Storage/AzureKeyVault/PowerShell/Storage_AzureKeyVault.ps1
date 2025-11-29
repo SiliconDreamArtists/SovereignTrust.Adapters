@@ -1,6 +1,6 @@
 class Storage_AzureKeyVault {
     [MappedStorageAdapter]$MappedAdapter
-    [object]$Jacket
+    [Signal]$Signal
 
     Storage_AzureKeyVault() {
     }
@@ -10,18 +10,23 @@ class Storage_AzureKeyVault {
     }
 
     [Signal] Construct([object]$dictionary) {
-        $opSignal = [Signal]::Start("Construct-EmbeddedFileSystem") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1
 
         try {
             if ($null -eq $dictionary) {
-                return $opSignal.LogCritical("Cannot construct EmbeddedFileSystem — provided dictionary is null.")
+                return $opSignal.LogCritical("Cannot construct Storage_AzureKeyVault — provided dictionary is null.")
             }
 
-            $this.Jacket = $dictionary
-            $opSignal.LogInformation("EmbeddedFileSystem constructed successfully with provided jacket.")
+            $this.Signal = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1
+
+            $jacket = [Signal]::Start("Storage_AzureKeyVault") | Select-Object -Last 1 
+            
+            $this.Signal.SetJacket($jacket)
+            $jacket.SetResult($dictionary)
+            $opSignal.LogInformation("Storage_AzureKeyVault constructed successfully with provided jacket.")
         }
         catch {
-            $opSignal.LogCritical("Error constructing EmbeddedFileSystem: $_")
+            $opSignal.LogCritical("Error constructing Storage_AzureKeyVault: $_")
         }
 
         return $opSignal

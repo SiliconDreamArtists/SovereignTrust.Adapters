@@ -1,6 +1,6 @@
 class Storage_AzureStorageAccount {
     [MappedStorageAdapter]$MappedAdapter
-    [object]$Jacket
+    [Signal]$Signal
 
     Storage_AzureStorageAccount() {
     }
@@ -10,25 +10,30 @@ class Storage_AzureStorageAccount {
     }
 
     [Signal] Construct([object]$dictionary) {
-        $opSignal = [Signal]::Start("Construct-EmbeddedFileSystem") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1
 
         try {
             if ($null -eq $dictionary) {
-                return $opSignal.LogCritical("Cannot construct EmbeddedFileSystem — provided dictionary is null.")
+                return $opSignal.LogCritical("Cannot construct Storage_AzureStorageAccount — provided dictionary is null.")
             }
 
-            $this.Jacket = $dictionary
-            $opSignal.LogInformation("EmbeddedFileSystem constructed successfully with provided jacket.")
+            $this.Signal = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1
+
+            $jacket = [Signal]::Start("Storage_AzureStorageAccount") | Select-Object -Last 1 
+            
+            $this.Signal.SetJacket($jacket)
+            $jacket.SetResult($dictionary)
+            $opSignal.LogInformation("Storage_AzureStorageAccount constructed successfully with provided jacket.")
         }
         catch {
-            $opSignal.LogCritical("Error constructing EmbeddedFileSystem: $_")
+            $opSignal.LogCritical("Error constructing Storage_AzureStorageAccount: $_")
         }
 
         return $opSignal
     }
 
     [Signal] ReadObjectAsJson([string]$virtualPath) {
-        $opSignal = [Signal]::Start("EmbeddedFileSystem.ReadObjectAsJson") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Storage_AzureStorageAccount.ReadObjectAsJson") | Select-Object -Last 1
 
         try {
             # 🧠 Ensure the virtual path ends with '.json'
@@ -66,7 +71,7 @@ class Storage_AzureStorageAccount {
     }
 
     [Signal] ReadObject([string]$virtualPath) {
-        $opSignal = [Signal]::Start("EmbeddedFileSystem.ReadObject") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Storage_AzureStorageAccount.ReadObject") | Select-Object -Last 1
 
         try {
             # ░▒▓█ RESOLVE ADDRESSES FROM %.@.Addresses █▓▒░
