@@ -1,5 +1,15 @@
-$sgModuleName = 'SovereignTrust.Foundation'
 
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\SignalEntry.ps1"
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Signal.ps1"
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Graph.ps1"
+
+$sgModuleName = 'SignalGraph'
+if (-not (Get-Module -Name $sgModuleName)) {
+    $sgPath = Join-Path $PSScriptRoot "../../../../../SignalGraph/Src/PowerShell/SignalGraph.psd1"
+    Import-Module (Resolve-Path $sgPath).ProviderPath -Force
+}
+
+$sgModuleName = 'SovereignTrust.Foundation'
 if (-not (Get-Module -Name $sgModuleName)) {
     $sgPath = Join-Path $PSScriptRoot "../../../../../SovereignTrust.Foundation/Src/PowerShell/SovereignTrust.Foundation.psd1"
     Import-Module (Resolve-Path $sgPath).ProviderPath -Force
@@ -8,6 +18,8 @@ if (-not (Get-Module -Name $sgModuleName)) {
 # Load all files (functions + classes)
 . "$PSScriptRoot/Invoke-Conduction_ST.ps1"
 . "$PSScriptRoot/Invoke-Conduction_ST_GetNextPhaseSet.ps1"
+. "$PSScriptRoot/Invoke-ConductionPhase.ps1"
+. "$PSScriptRoot/Resolve-Function.ps1"
 
 class Conduction_ST {
     [MappedConductionAdapter]$MappedAdapter
@@ -43,13 +55,14 @@ class Conduction_ST {
         return $opSignal
     }
 
-    [Signal] Invoke([string]$Slot, [Signal]$Context, [object]$Plan) {
+#    [Signal] Invoke([string]$Slot, [Signal]$Context, [object]$Plan) {
+    [Signal]Invoke([string]$Slot, [string]$Activity, [Signal]$ConductionSignal, [object]$Plan, [Signal]$ItemSignal) {
 #    [Signal] Invoke([string]$Slot, [Signal]$ConductionSignal) {
         $opSignal = [Signal]::Start("Token_Environment.Invoke") | Select-Object -Last 1
-        $conductor = $this.MappedAdapter.Signal.GetJacket()
+#        $conductor = $this.MappedAdapter.Signal.GetJacket()
         
         try {
-            $resultSignal = Invoke-Conduction_ST -Conductor $conductor -Conduit $null -ConductionSignal $Context -Slot $Slot | Select-Object -Last 1
+            $resultSignal = Invoke-Conduction_ST -Signal $ConductionSignal -Slot $Slot -Activity $Activity -ItemSignal $ItemSignal -Plan $Plan | Select-Object -Last 1
             $opSignal.MergeSignal($resultSignal)
 
             if ($resultSignal.Success()) {
@@ -66,8 +79,6 @@ class Conduction_ST {
         return $opSignal
     }
 
-
-  
 }
 
 

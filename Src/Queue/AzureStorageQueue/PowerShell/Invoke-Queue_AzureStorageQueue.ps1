@@ -1,4 +1,4 @@
-function Invoke-Network_AzureStorageQueue()
+function Invoke-Queue_AzureStorageQueue()
 {
 
     param (

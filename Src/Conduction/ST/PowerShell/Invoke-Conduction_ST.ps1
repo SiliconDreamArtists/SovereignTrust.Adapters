@@ -1,86 +1,63 @@
 function Invoke-Conduction_ST {
-
     param (
-        [object]$Conductor,
-        [object]$Conduit,
-        [Signal]$ConductionSignal,
-        $Slot
+        [Signal]$Signal,
+        [string]$Slot,
+        [string]$Activity,  
+        [object]$Plan,
+        [Signal]$ItemSignal
     )
 
     $opSignal = [Signal]::Start("Invoke-Conduction_ST") | Select-Object -Last 1
 
     try { 
-        if ($null -eq $Conductor) {
-            return $opSignal.LogCritical("Cannot invoke Conduction_ST — provided Conductor is null.")
-        } 
-
-        if ($null -eq $ConductionSignal) {
+        if ($null -eq $Signal) {
             return $opSignal.LogCritical("Cannot invoke Conduction_ST — provided ConductionSignal is null.")
         }
 
-        $itemSignal = $ConductionSignal.GetJacket()
+        $ItemSignal = $ItemSignal ?? $Signal.GetJacket()
 
-        # Choose which Signal to mine the jacket of to find the conduction plan.
-        $conductionJacket = $itemSignal
-        if (-not $itemSignal.HasJacket()) {
-            $conductionJacket = $ConductionSignal
-        }
-
-        $planSignal = Resolve-PathFromDictionary -Dictionary $conductionJacket -Path "%.@.ConductionPlan" | Select-Object -Last 1
-
+        # Convert the 
 
         $GridPlan = [PSCustomObject]@{
-            SourcesWirePath           = "ConductionPlan"
-            SourcesWirePathTemplate   = "%.%.@.{0}"
-            SourcesIdentifierWirePath = "Name"
+            Name           = "GridPhases"
+            Description    = "Places the phases in the Grid (of the ItemSignal)"
+            SourceAdapter  = "Condenser.Conduit"
+            SourceActivity = "Graph"
+            Path           = "@.Phases"
+            Key            = "Adapters"
+            TargetPath     = "*.Phases"
         }
 
-        #                $planSignal = [Signal]::Start("Invoke-MessageResponse", $ConductionSignal) | Select-Object -Last 1
-        #                $planSignal.SetResult($Plan)
-                
-        $gridConductionPlanSignal = Invoke-GridCondenser -Signal $ConductionSignal -Plan $GridPlan -ItemSignal $conductionJacket -PlanWirePathPrefix "%.%.@" | Select-Object -Last 1
-   
-        $gridConductionPlanSignalSignal = Resolve-PathFromDictionary -Dictionary $gridConductionPlanSignal -Path "@.*.#" | Select-Object -Last 1
 
-        if ($opSignal.MergeSignalAndVerifyFailure($phasesSignal)) {
-            $opSignal.LogCritical("❌ Failed to resolve 'Phases' from ConductionSignal.")
-            return $opSignal
-        }
+        # Generate a Signal Graph of the Phases
+        $gridResultSignal = Invoke-CondenserAdapter -Slot "Conduit" -Activity "Graph" -Signal $Signal -Plan $GridPlan -ItemSignal $ItemSignal | Select-Object -Last 1
+        $gridSignal = $gridResultSignal.GetResult()
 
-<#
-        $verb = ""
-        $verbSignal = Resolve-PathFromDictionary -Dictionary $ConductionSignal -Path "@.Verb" -FailureLogLevel "Verbose" | Select-Object -Last 1
+        $phasesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Phases" | Select-Object -Last 1
+#        $phasesFlatArray = $phasesSignal.GetResult($true)
 
-        if ($verbSignal.HasResult()) {
-            $verb = $verbSignal.GetResult()
-        }
-#>
-        # Update this to follow the way that Condensers run.
-        $phases = $gridConductionPlanSignalSignal.GetResult()
-    
-        $phaseGraph = $gridConductionPlanSignal.GetResult().GetPointer()
-        $phaseGraphSignal = [Signal]::Start("Invoke-Conduction_ST:PhaseGraphSignal") | Select-Object -Last 1
-        $phaseGraphSignal.SetResult($phaseGraph)
+        $phaseGraphSignal = Invoke-Conduction_ST_GetNextPhaseSet -DependsOn "" -PhaseArraySignal $phasesSignal
 
-        $phaseGraphSignalJacket = [Signal]::Start("Invoke-Conduction_ST:PhaseGraphSignal") | Select-Object -Last 1
- #       Add-PathToDictionary -Dictionary $phaseGraphSignalJacket -Path "@.Verb" -Value $verb
+        $invokeResultSignal = Invoke-ConductionPhaseSet -Signal $Signal -ItemSignal $phaseGraphSignal -Plan $Plan | Select-Object -Last 1
+        $opSignal.MergeSignal($invokeResultSignal)
 
-        $phaseGraphSignal.SetJacket($phaseGraphSignalJacket)
+        <#
 
         function Invoke-Conduction_ST_ExecutePhaseSet {
             [CmdletBinding()]
             param(
                 [Parameter(Mandatory)] [Signal] $opSignal,
-                [Parameter(Mandatory)]          $PhaseGraphSignal,
+                [Parameter(Mandatory)]          $phaseGraphSignal,
                 [Parameter(Mandatory)]          $Conductor,
                 $Phases = $null,
                 $Slot
+
             )
 
 
             if ($null -eq $Phases) {
                 # Get current phase set
-                $phaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -PhaseGraphSignal $PhaseGraphSignal -Slot $Slot | Select-Object -Last 1
+                $phaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal -Slot $Slot | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
                     $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
@@ -95,6 +72,7 @@ function Invoke-Conduction_ST {
             }
 
             #    while ($phases.Count) {
+
             foreach ($phaseKey in $Phases.Keys) {
                 $phase = $Phases[$phaseKey]
                 $opSignal.LogInformation("➡️ Processing phase: $($phase.Name)")
@@ -108,7 +86,7 @@ function Invoke-Conduction_ST {
                 Write-Host "[agent] Resolved command executed successfully." -ForegroundColor Green
 
                 # Fetch inner phase set and recurse
-                $innerPhaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -PhaseGraphSignal $PhaseGraphSignal -CurrentPhaseSignal $phase | Select-Object -Last 1
+                $innerPhaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal -CurrentPhaseSignal $phase | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($innerPhaseListSignal)) {
                     $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
@@ -118,7 +96,7 @@ function Invoke-Conduction_ST {
 
                 ## Perform Recursive Execution of inner phases
                 if ($innerPhases.Count) {
-                    $null = Invoke-Conduction_ST_ExecutePhaseSet -opSignal $opSignal -PhaseGraphSignal $PhaseGraphSignal -Phases $innerPhases -Conductor $Conductor
+                    $null = Invoke-Conduction_ST_ExecutePhaseSet -opSignal $opSignal -phaseGraphSignal $phaseGraphSignal -Phases $innerPhases -Conductor $Conductor
                 }
             }
 
@@ -136,10 +114,14 @@ function Invoke-Conduction_ST {
             return $opSignal
         }
 
-        Invoke-Conduction_ST_ExecutePhaseSet -opSignal $opSignal -PhaseGraphSignal $phaseGraphSignal -Conductor $Conductor -Slot $Slot | Select-Object -Last 1
+        $invokeResultSignal = Invoke-ConductionPhaseSet -Signal $Signal -ItemSignal $phaseGraphSignal -Plan $Plan | Select-Object -Last 1
+        $opSignal.MergeSignal($invokeResultSignal)
+
+      #  $InvokeResult = Invoke-ConductionPhase -Signal $Signal -ItemSignal $phaseGraphSignal -Plan $Plan | Select-Object -Last 1
+#        Invoke-Conduction_ST_ExecutePhaseSet -opSignal $opSignal -phaseGraphSignal $phaseGraphSignal -Conductor $Conductor -Slot $Slot | Select-Object -Last 1
 
         ############################################################        
-        $phaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -PhaseGraphSignal $phaseGraphSignal | Select-Object -Last 1
+        $phaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal | Select-Object -Last 1
         if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
             $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
             return $opSignal
@@ -160,7 +142,7 @@ function Invoke-Conduction_ST {
                 $result = Invoke-Expression $command | Select-Object -Last 1
                 Write-Host "[agent] Resolved command executed successfully." -ForegroundColor Green
 
-                $innerPhaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -PhaseGraphSignal $phaseGraphSignal  | Select-Object -Last 1
+                $innerPhaseListSignal = Invoke-Conduction_ST_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal  | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
                     $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
@@ -181,6 +163,8 @@ function Invoke-Conduction_ST {
     
         $opSignal.SetResult($resultSignal.GetResult())
         $opSignal.LogInformation("✅ Invoked Conduction_ST successfully.")
+
+#>
 
 
     }
