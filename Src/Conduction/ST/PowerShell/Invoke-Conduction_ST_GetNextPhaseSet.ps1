@@ -6,7 +6,9 @@ function Invoke-Conduction_ST_GetNextPhaseSet {
 
         # A Signal whose Result contains the flat phase array (or a wrapper holding it)
         [Parameter(Mandatory)]
-        [Signal]$PhaseArraySignal
+        [Signal]$PhaseArraySignal,
+
+        [Signal]$PhasesGridSignal
     )
 
     $opSignal = [Signal]::Start("Invoke-Conduction_ST_GetNextPhaseSet") | Select-Object -Last 1
@@ -94,7 +96,15 @@ function Invoke-Conduction_ST_GetNextPhaseSet {
             Sort-Object -Property Order, Name |
             Select-Object -ExpandProperty Phase
 
-        $opSignal.SetResult(@($nextNames)) | Out-Null
+            $nextPhasesSignals = @()
+        foreach ($nextItem in $nextNames)
+        {
+            $nextName = $nextItem.Name
+           $nextPhaseSignal = Resolve-PathFromDictionary -Dictionary $PhasesGridSignal -Path "@.@.#.$nextName" | Select-Object -Last 1
+           $nextPhasesSignals += $nextPhaseSignal.GetResult()
+        }
+
+        $opSignal.SetResult(@($nextPhasesSignals)) | Out-Null
     }
     catch {
         $opSignal.LogCritical("Exception in Invoke-Conduction_ST_GetNextPhaseSet: $_") | Out-Null

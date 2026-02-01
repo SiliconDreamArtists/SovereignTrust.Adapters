@@ -1,0 +1,207 @@
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\SignalEntry.ps1"
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Signal.ps1"
+. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Graph.ps1"
+
+$sgModuleName = 'SignalGraph'
+if (-not (Get-Module -Name $sgModuleName)) {
+    $sgPath = Join-Path $PSScriptRoot "../../../../../SignalGraph/Src/PowerShell/SignalGraph.psd1"
+    Import-Module (Resolve-Path $sgPath).ProviderPath -Force
+}
+
+$stModuleName = 'SovereignTrust.Foundation'
+if (-not (Get-Module -Name $stModuleName)) {
+    $stPath = Join-Path $PSScriptRoot "../../../../../SovereignTrust.Foundation/Src/PowerShell/SovereignTrust.Foundation.psd1"
+    Import-Module (Resolve-Path $stPath).ProviderPath -Force
+}
+
+# ---- Load Network functions (your existing REST surface) ----
+# Use your existing implementations here
+# . "$PSScriptRoot/Read-StorageNetworkApi.ps1"
+# Optional if you have them:
+# . "$PSScriptRoot/Delete-StorageNetworkMessageApi.ps1"
+# . "$PSScriptRoot/Update-StorageNetworkVisibilityApi.ps1"
+# . "$PSScriptRoot/Write-StorageNetworkApi.ps1"
+
+class Network_AzureApplicationInsights {
+    [MappedNetworkAdapter]$MappedAdapter
+    [Signal]$Signal
+
+    Network_AzureApplicationInsights() { }
+
+    Network_AzureApplicationInsights([MappedNetworkAdapter]$mappedAdapter) {
+        $this.MappedAdapter = $mappedAdapter
+    }
+
+    [Signal] Construct([object]$dictionary) {
+        $opSignal = [Signal]::Start("Network_AzureApplicationInsights.Construct") | Select-Object -Last 1
+
+        try {
+            if ($null -eq $dictionary) {
+                $opSignal.LogCritical("Cannot construct Network_AzureApplicationInsights — provided dictionary is null.")
+                return $opSignal
+            }
+
+            $this.Signal = [Signal]::Start("Network_AzureApplicationInsights") | Select-Object -Last 1
+
+            $jacket = [Signal]::Start("Network_AzureApplicationInsights.Jacket") | Select-Object -Last 1
+            $jacket.SetResult($dictionary)
+
+            $this.Signal.SetJacket($jacket)
+            $opSignal.LogInformation("Network_AzureApplicationInsights constructed successfully with provided jacket.")
+        }
+        catch {
+            $opSignal.LogCritical("Error constructing Network_AzureApplicationInsights: $_")
+        }
+
+        return $opSignal
+    }
+
+    # ---------------------------------------------------------------------
+    # Universal Invoke entry 
+    # Activity uses canonical verb set: ReadBatch, PeekBatch, AckItem, DeferItem, WriteItem
+    # ---------------------------------------------------------------------
+    [Signal] Invoke(
+        [string]$Slot,
+        [string]$Activity,
+        [Signal]$ConductionSignal,
+        [object]$Plan,
+        [Signal]$ItemSignal
+    ) {
+        $opSignal = [Signal]::Start("Network_AzureApplicationInsights.Invoke:$Slot.$Activity", $ConductionSignal) | Select-Object -Last 1
+
+        try {
+            if (-not $ConductionSignal) {
+                $opSignal.LogCritical("❌ Null ConductionSignal passed to Network_AzureApplicationInsights.Invoke()")
+                return $opSignal
+            }
+
+            if (-not $Activity) {
+                $opSignal.LogWarning("⚠️ No Activity provided to Network_AzureApplicationInsights.Invoke()")
+                return $opSignal
+            }
+
+            # Resolve Config from Plan (or from Environment if you prefer)
+            # Convention: Plan contains everything needed to hit the service for this step
+            $configSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config" -SignalLevel "Warning" | Select-Object -Last 1
+            $config = $configSignal.HasResult() ? $configSignal.GetResult() : $null
+
+            if (-not $config) {
+                # Optional fallback: pull config from Environment/Jacket
+                # $env = $ConductionSignal.GetJacket().GetResult()
+                # $configSignal = Resolve-PathFromDictionary -Dictionary $env -Path "Network.StorageNetwork.Config" -SignalLevel "Warning" | Select-Object -Last 1
+                $opSignal.LogWarning("⚠️ StorageNetwork Config not found on Plan.Config (no fallback enabled).")
+            }
+
+            $resultSignal = $null
+
+            switch ($Activity) {
+                # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
+                "EmitEntries" {
+                    # The App Insights Network Adapter prepares a custom plan to pass to its body. 
+                    # Use the plan to run a conduction that will grab the plan from the cache and run it passing through the signal in ItemSignal which will generate the content and send it to App Insights       
+
+#                    $resultSignal = Invoke-MappedAdapter -Signal $ConductionSignal -Plan $Plan -ItemSignal $ItemSignal -Adapter "Condenser.Memory" -Activity "Generate"
+#                    $opSignal.MergeSignal($resultSignal)
+
+                    $PlanTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.PlanTokens.EmitEntries" | Select-Object -Last 1
+
+                    $TokenPlan = [PSCustomObject]@{
+                        Key = $PlanTokenSignal.GetResult()
+                    }
+
+                    $planLookupSignal = [Signal]::Start("Network_AzureApplicationInsights.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                    $planLookupSignal.SetResult($PlanTokenSignal.GetResult());
+                    $cachedPlanSignal = Invoke-CondenserAdapter -Slot "Token" -Signal $ConductionSignal -ItemSignal $PlanTokenSignal -Activity "Parse" -Plan $TokenPlan | Select-Object -Last 1
+                    if ($opSignal.MergeSignalAndVerifyFailure($cachedPlanSignal)) {return $opSignal}
+
+                    $clonedCachePlan = $cachedPlanSignal.GetResult() | ConvertTo-Json -Depth 10 | ConvertFrom-Json -Depth 10
+<#                    $planItemSignal = [Signal]::Start("Network_AzureApplicationInsights.Conduction.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                    $planItemSignal.SetJacketResult($clonedCachePlan)
+
+                    # Place the Original ItemSignal into the PlanItemSignal as the result so it can be used by the conduction process later.
+                    $planItemSignal.SetResult($ItemSignal) #>
+                    
+                    
+                    $conductionSignal = Invoke-CondenserAdapter -Slot "Conduction" -Signal $ConductionSignal -ItemSignal $ItemSignal -Activity "ST" -Plan $clonedCachePlan | Select-Object -Last 1
+                    if ($opSignal.MergeSignalAndVerifyFailure($conductionSignal)) {return $opSignal}
+
+                    return $opSignal
+
+                    break
+                }
+                "EmitSignal" {
+                    # The App Insights Network Adapter prepares a custom plan to pass to its body. 
+
+
+
+                    break   
+                }
+                "SendMessage" {
+                    # The App Insights Network Adapter prepares a custom plan to pass to its body. 
+                     $bodyPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Path" | Select-Object -Last 1
+
+                    $ContentPlan = [PSCustomObject]@{
+                        Path = $bodyPathSignal.GetResult()
+#                                HydrationPlan = "@"
+                    }
+
+                    $SourceContentResultSignal = Invoke-MappedAdapter -Adapter "Token.Memory"  -Activity "Get" -Plan $ContentPlan -ItemSignal $ItemSignal -Signal $ConductionSignal | Select-Object -Last 1
+
+                    $uriSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
+#                    $resourceSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
+                    
+                    $RestPlan = [PSCustomObject]@{
+                        Config = [PSCustomObject]@{
+                            Body = $SourceContentResultSignal.GetResult()
+                            Method = "Post"
+                            SkipBearerToken = $true
+                            Uri = $uriSignal.GetResult()
+                        }
+                    }
+
+                    # Call Rest Endpoint
+                    $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "Post" -Signal $ConductionSignal -Plan $RestPlan -ItemSignal $ItemSignal
+                    if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) { return $opSignal }
+                    #$responseJacketSignal.SetJacket($responseSignal)
+
+
+                    $mySender = "abc"
+
+
+
+                    break   
+                }
+
+
+                default {
+                    $opSignal.LogWarning("⚠️ Unsupported Activity: $Activity")
+                    $resultSignal = [Signal]::Start("StorageNetwork.UnsupportedActivity", $ItemSignal) | Select-Object -Last 1
+                    break
+                }
+            }
+
+            if ($resultSignal) {
+                $opSignal.MergeSignal($resultSignal)
+                if ($resultSignal.Success()) {
+                    $opSignal.SetResult($resultSignal.GetResult($true))
+                    $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
+                } else {
+                    $opSignal.LogWarning("⚠️ $Slot.$Activity did not succeed.")
+                }
+            }
+
+        }
+        catch {
+            $opSignal.LogCritical("🔥 Exception in Network_AzureApplicationInsights.Invoke: $($_.Exception.Message)")
+        }
+
+        return $opSignal
+    }
+}
+
+function Resolve-Network_AzureApplicationInsights {
+    $object = [Network_AzureApplicationInsights]::new()
+    return $object
+}
+
+Export-ModuleMember -Function Resolve-Network_AzureApplicationInsights

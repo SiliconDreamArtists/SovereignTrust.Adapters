@@ -16,19 +16,17 @@ function Invoke-ConductionPhaseSet {
 
     $opSignal = [Signal]::Start("Invoke-ConductionPhaseSet", $Signal) | Select-Object -Last 1
 
-    $phaseSet = $ItemSignal.GetResult()
+    $phaseSet = $ItemSignal.GetJacketResult()
 
-    foreach ($phase in $phaseSet) {
-
-        $phaseSignal = [Signal]::Start("Invoke-ConductionPhaseSet", $Signal) | Select-Object -Last 1
-        $phaseSignal.SetResult($phase)
-
+    foreach ($phaseSignal in $phaseSet) {
         $phaseJacketSignal = [Signal]::Start("Invoke-ConductionPhaseSet", $Signal) | Select-Object -Last 1
         $phaseJacketSignal.SetJacket($phaseSignal)
-    
+        
+        # Passing through the original ItemSignal passed through the condenser/conduction for processing in the phases
+        $phaseSignal.SetResult($ItemSignal)
         $phaseResult = Invoke-ConductionPhase `
             -Signal $Signal `
-            -ItemSignal $phaseJacketSignal `
+            -ItemSignal $phaseSignal `
             -Plan $Plan | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure($phaseResult)) {
@@ -172,12 +170,24 @@ function Invoke-ConductionPhase {
         if ($opSignal.MergeSignalAndVerifyFailure($phaseDictSignal)) {
             return $opSignal.LogCritical("Failed to resolve Phase dictionary from ItemSignal.")
         }
+
         $phaseDict = $phaseDictSignal.GetResult()
 
-
-
         # ---- Pre-mappings ----
+        # Use the set ItemSignal if it exists, otherwise start a new target signal
         $TargetSignal = [Signal]::Start("Resolve-ConductionPlanRoute.Target", $opSignal) | Select-Object -Last 1
+
+        # Nicely fit the Original Item into the jacket of the target to pass through the conduction phases.
+        if ($ItemSignal.HasResult()) {
+            $originalItemSignal = $ItemSignal.GetResult()
+            if ($originalItemSignal.HasResult())
+            {
+                # TODO: Review the chain to figure out why/where the result is in the result.
+                $originalItemSignal = $originalItemSignal.GetResult()
+            }
+
+            $TargetSignal = $originalItemSignal
+        }
 
         $sourceSignal = Invoke-CondenserAdapter `
             -Slot "Memory" `

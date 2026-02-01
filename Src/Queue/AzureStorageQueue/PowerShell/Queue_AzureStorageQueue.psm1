@@ -57,8 +57,7 @@ class Queue_AzureStorageQueue {
     }
 
     # ---------------------------------------------------------------------
-    # Universal Invoke entry (same signature as your Conduction_ST)
-    # Slot is typically "StorageQueue" (or a specific queue surface)
+    # Universal Invoke entry 
     # Activity uses canonical verb set: ReadBatch, PeekBatch, AckItem, DeferItem, WriteItem
     # ---------------------------------------------------------------------
     [Signal] Invoke(
@@ -170,15 +169,15 @@ class Queue_AzureStorageQueue {
                     $clonePlan = $Plan | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
                     Add-PathToDictionary -Dictionary $clonePlan -Path "QueryString" -Value $querystring
 
-                    $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" -Default 1 | Select-Object -Last 1
+                    $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
                     $HostAddress = $HostSignal.GetResult()
 
-                    $UriSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" -Default 1 | Select-Object -Last 1
+                    $UriSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
                     $Uri = $UriSignal.GetResult()
 
-                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Uri" -Value "$HostAddress/$Uri"
-                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Host" -Value "$HostAddress"
-                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "CacheAccessToken" -Value $true
+                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value "$HostAddress/$Uri"
+                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Host" -Value "$HostAddress"
+                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.CacheAccessToken" -Value $true
 
                     $responseJacketSignal = [Signal]::Start("Queue_AzureStorageQueue.Invoke:$Slot.$Activity.Jacket", $ItemSignal) | Select-Object -Last 1
 
