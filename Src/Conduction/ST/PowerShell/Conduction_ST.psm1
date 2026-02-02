@@ -73,7 +73,7 @@ class Conduction_ST {
             }
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Token_Environment.Invoke: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in Token_Environment.Invoke: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal

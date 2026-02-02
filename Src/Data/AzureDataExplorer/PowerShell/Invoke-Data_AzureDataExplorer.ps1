@@ -169,7 +169,7 @@ function Invoke-Data_AzureDataExplorer {
 
     }
     catch {
-        $opSignal.LogCritical("🔥 Exception during Invoke-Data_AzureDataExplorer: $_")
+        $opSignal.LogCritical("🔥 Exception during Invoke-Data_AzureDataExplorer: $_", $null, $_)
     }
 
     return $opSignal

@@ -221,7 +221,7 @@ class Data_AzureDataExplorer {
 
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Data_AzureDataExplorer.Invoke: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in Data_AzureDataExplorer.Invoke: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal

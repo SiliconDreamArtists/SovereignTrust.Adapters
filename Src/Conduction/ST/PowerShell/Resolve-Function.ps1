@@ -31,7 +31,7 @@ function Resolve-Function {
         return $opSignal
     }
     catch {
-        $opSignal.LogCritical("💥 Exception in Resolve-FunctionLoaded: $($_.Exception.Message)")
+        $opSignal.LogCritical("💥 Exception in Resolve-FunctionLoaded: $($_.Exception.Message)", $null, $_)
         return $opSignal
     }
 }

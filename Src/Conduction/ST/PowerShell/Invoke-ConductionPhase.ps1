@@ -281,7 +281,7 @@ function Invoke-ConductionPhase {
         }
         catch { }
 
-        $opSignal.LogCritical("🔥 Exception during Invoke-ConductionPhase: $($exception.Message)") | Out-Null
+        $opSignal.LogCritical("🔥 Exception during Invoke-ConductionPhase: $($exception.Message)", $null, $_) | Out-Null
     }
 
     # Per requirement: return the phase (ItemSignal) in opSignal result

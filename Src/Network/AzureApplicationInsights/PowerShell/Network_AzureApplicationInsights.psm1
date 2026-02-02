@@ -96,14 +96,16 @@ class Network_AzureApplicationInsights {
 
             switch ($Activity) {
                 # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
-                "EmitEntries" {
+                "EmitSignalFull" {
+                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
+                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
+                    break
+                }
+                { $_ -in @("EmitEntries", "EmitSignal") } {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
                     # Use the plan to run a conduction that will grab the plan from the cache and run it passing through the signal in ItemSignal which will generate the content and send it to App Insights       
 
-#                    $resultSignal = Invoke-MappedAdapter -Signal $ConductionSignal -Plan $Plan -ItemSignal $ItemSignal -Adapter "Condenser.Memory" -Activity "Generate"
-#                    $opSignal.MergeSignal($resultSignal)
-
-                    $PlanTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.PlanTokens.EmitEntries" | Select-Object -Last 1
+                    $PlanTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.PlanTokens.$($Activity)" | Select-Object -Last 1
 
                     $TokenPlan = [PSCustomObject]@{
                         Key = $PlanTokenSignal.GetResult()
@@ -115,26 +117,10 @@ class Network_AzureApplicationInsights {
                     if ($opSignal.MergeSignalAndVerifyFailure($cachedPlanSignal)) {return $opSignal}
 
                     $clonedCachePlan = $cachedPlanSignal.GetResult() | ConvertTo-Json -Depth 10 | ConvertFrom-Json -Depth 10
-<#                    $planItemSignal = [Signal]::Start("Network_AzureApplicationInsights.Conduction.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
-                    $planItemSignal.SetJacketResult($clonedCachePlan)
-
-                    # Place the Original ItemSignal into the PlanItemSignal as the result so it can be used by the conduction process later.
-                    $planItemSignal.SetResult($ItemSignal) #>
-                    
-                    
                     $conductionSignal = Invoke-CondenserAdapter -Slot "Conduction" -Signal $ConductionSignal -ItemSignal $ItemSignal -Activity "ST" -Plan $clonedCachePlan | Select-Object -Last 1
                     if ($opSignal.MergeSignalAndVerifyFailure($conductionSignal)) {return $opSignal}
 
-                    return $opSignal
-
                     break
-                }
-                "EmitSignal" {
-                    # The App Insights Network Adapter prepares a custom plan to pass to its body. 
-
-
-
-                    break   
                 }
                 "SendMessage" {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
@@ -164,11 +150,7 @@ class Network_AzureApplicationInsights {
                     if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) { return $opSignal }
                     #$responseJacketSignal.SetJacket($responseSignal)
 
-
-                    $mySender = "abc"
-
-
-
+                    $opSignal.SetResult($responseSignal.GetResult())
                     break   
                 }
 
@@ -192,7 +174,7 @@ class Network_AzureApplicationInsights {
 
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Network_AzureApplicationInsights.Invoke: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in Network_AzureApplicationInsights.Invoke: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal

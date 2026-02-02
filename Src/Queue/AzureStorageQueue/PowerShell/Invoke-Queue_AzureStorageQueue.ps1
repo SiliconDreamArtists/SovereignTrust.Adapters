@@ -60,7 +60,7 @@ function Invoke-Queue_AzureStorageQueue()
 
     }
     catch {
-            $opSignal.LogCritical("🔥 Exception during Invoke-Conduction_ST: $_")
+            $opSignal.LogCritical("🔥 Exception during Invoke-Conduction_ST: $_", $null, $_)
     }
 
     return $opSignal

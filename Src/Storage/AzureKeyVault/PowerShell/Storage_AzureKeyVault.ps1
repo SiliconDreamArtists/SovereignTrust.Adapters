@@ -64,7 +64,7 @@ class Storage_AzureKeyVault {
             }
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal
@@ -97,7 +97,7 @@ class Storage_AzureKeyVault {
             $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal

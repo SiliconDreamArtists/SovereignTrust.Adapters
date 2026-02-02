@@ -69,7 +69,7 @@ function Authorize-AzSessionFromSignal {
         $opSignal.LogInformation("🔐 Azure session authorized using mode: $authMode")
     }
     catch {
-        $opSignal.LogCritical("🔥 Exception during Azure authorization: $($_.Exception.Message)")
+        $opSignal.LogCritical("🔥 Exception during Azure authorization: $($_.Exception.Message)", $null, $_)
     }
 
     return $opSignal

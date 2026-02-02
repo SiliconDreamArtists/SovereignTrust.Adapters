@@ -66,7 +66,7 @@ class Storage_AzureStorageAccount {
             }
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObjectAsJson: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal
@@ -99,7 +99,7 @@ class Storage_AzureStorageAccount {
             $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)")
+            $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal

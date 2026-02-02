@@ -175,7 +175,7 @@ function Invoke-Conduction_ST {
 
     }
     catch {
-        $opSignal.LogCritical("🔥 Exception during Invoke-Conduction_ST: $_")
+        $opSignal.LogCritical("🔥 Exception during Invoke-Conduction_ST: $_", $null, $_)
     }
 
     return $opSignal
