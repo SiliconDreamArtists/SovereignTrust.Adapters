@@ -74,7 +74,7 @@ class Data_AzureDataExplorer {
             $opSignal.SetJacket($ConductionSignal)
 
             if (-not $Activity) {
-                $opSignal.LogWarning("⚠️ No Activity provided to Queue_AzureStorageQueue.Invoke()")
+                $opSignal.LogWarning("No Activity provided to Queue_AzureStorageQueue.Invoke()")
                 return $opSignal
             }
 
@@ -87,7 +87,7 @@ class Data_AzureDataExplorer {
                 # Optional fallback: pull config from Environment/Jacket
                 # $env = $ConductionSignal.GetJacket().GetResult()
                 # $configSignal = Resolve-PathFromDictionary -Dictionary $env -Path "Queue.StorageQueue.Config" -SignalLevel "Warning" | Select-Object -Last 1
-                $opSignal.LogWarning("⚠️ StorageQueue Config not found on Plan.Config (no fallback enabled).")
+                $opSignal.LogWarning("StorageQueue Config not found on Plan.Config (no fallback enabled).")
             }
 
             $resultSignal = $null
@@ -202,7 +202,7 @@ class Data_AzureDataExplorer {
                 }
 
                 default {
-                    $opSignal.LogWarning("⚠️ Unsupported Activity: $Activity")
+                    $opSignal.LogWarning("Unsupported Activity: $Activity")
                     $resultSignal = [Signal]::Start("StorageQueue.UnsupportedActivity", $ItemSignal) | Select-Object -Last 1
                     break
                 }
@@ -215,7 +215,7 @@ class Data_AzureDataExplorer {
                     $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
                 }
                 else {
-                    $opSignal.LogWarning("⚠️ $Slot.$Activity did not succeed.")
+                    $opSignal.LogWarning("$Slot.$Activity did not succeed.")
                 }
             }
 

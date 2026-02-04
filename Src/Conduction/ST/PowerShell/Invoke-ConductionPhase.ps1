@@ -14,7 +14,7 @@ function Invoke-ConductionPhaseSet {
         [object]$Plan
     )
 
-    $opSignal = [Signal]::Start("Invoke-ConductionPhaseSet", $Signal) | Select-Object -Last 1
+    $opSignal = Start-SignalWrapper -Name "Invoke-ConductionPhaseSet" -ReversePointer $Signal
 
     $phaseSet = $ItemSignal.GetJacketResult()
 
@@ -29,9 +29,20 @@ function Invoke-ConductionPhaseSet {
             -ItemSignal $phaseSignal `
             -Plan $Plan | Select-Object -Last 1
 
+            $SkipTelemetrySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "ExcludeFromTelemetry" -Default $false | Select-Object -Last 1
+
+            if (-not $SkipTelemetrySignal.GetResult()) {
+                Invoke-Telemetry -Signal $Signal -ItemSignal $phaseResult
+            }
+
         if ($opSignal.MergeSignalAndVerifyFailure($phaseResult)) {
+
+            # TODO: Add Recovery option for a phase
+            # TODO: Add Failure so that phases can continue during a failure
             return $opSignal
         }
+
+        # TODO: Add Repeat Logic for repeating a Conduction Phase
     }
 
     return $opSignal
@@ -198,7 +209,7 @@ function Invoke-ConductionPhase {
         | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure(@($sourceSignal))) {
-            $opSignal.LogCritical("⚠️ Memory.Generate failed while resolving ConductionPlan.")
+            $opSignal.LogCritical("Memory.Generate failed while resolving ConductionPlan.")
             return $opSignal
         }
 
@@ -229,7 +240,7 @@ function Invoke-ConductionPhase {
         $postMappingsSignal = Resolve-PathFromDictionary -Dictionary $phaseDict -Path "PostMappings" -SignalLevel "Information" | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure(@($postMappingsSignal))) {
-            $opSignal.LogCritical("⚠️ Memory.Generate failed while resolving PostMappings.")
+            $opSignal.LogCritical("Memory.Generate failed while resolving PostMappings.")
             return $opSignal
         }
 
@@ -248,7 +259,7 @@ function Invoke-ConductionPhase {
             | Select-Object -Last 1
 
             if ($opSignal.MergeSignalAndVerifyFailure(@($sourceSignal))) {
-                $opSignal.LogCritical("⚠️ Memory.Generate failed while resolving PostMappings.")
+                $opSignal.LogCritical("Memory.Generate failed while resolving PostMappings.")
                 return $opSignal
             }
         }

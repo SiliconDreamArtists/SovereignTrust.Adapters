@@ -25,7 +25,7 @@ function Resolve-Function {
         if ($ThrowOnMissing) {
             $opSignal.LogCritical("❌ $msg")
         } else {
-            $opSignal.LogWarning("⚠️ $msg")
+            $opSignal.LogWarning("$msg")
         }
 
         return $opSignal

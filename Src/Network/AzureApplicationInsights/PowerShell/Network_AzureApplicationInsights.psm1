@@ -76,7 +76,7 @@ class Network_AzureApplicationInsights {
             }
 
             if (-not $Activity) {
-                $opSignal.LogWarning("⚠️ No Activity provided to Network_AzureApplicationInsights.Invoke()")
+                $opSignal.LogWarning("No Activity provided to Network_AzureApplicationInsights.Invoke()")
                 return $opSignal
             }
 
@@ -89,7 +89,7 @@ class Network_AzureApplicationInsights {
                 # Optional fallback: pull config from Environment/Jacket
                 # $env = $ConductionSignal.GetJacket().GetResult()
                 # $configSignal = Resolve-PathFromDictionary -Dictionary $env -Path "Network.StorageNetwork.Config" -SignalLevel "Warning" | Select-Object -Last 1
-                $opSignal.LogWarning("⚠️ StorageNetwork Config not found on Plan.Config (no fallback enabled).")
+                $opSignal.LogWarning("StorageNetwork Config not found on Plan.Config (no fallback enabled).")
             }
 
             $resultSignal = $null
@@ -99,6 +99,14 @@ class Network_AzureApplicationInsights {
                 "EmitSignalFull" {
                     $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
                     $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
+
+                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
+                    $ItemSignal.AddTag("Skip")
+                    foreach ($entry in $ItemSignal.Entries)
+                    {
+                        $entry.AddTag("Skip")
+                    }
+
                     break
                 }
                 { $_ -in @("EmitEntries", "EmitSignal") } {
@@ -119,7 +127,7 @@ class Network_AzureApplicationInsights {
                     $clonedCachePlan = $cachedPlanSignal.GetResult() | ConvertTo-Json -Depth 10 | ConvertFrom-Json -Depth 10
                     $conductionSignal = Invoke-CondenserAdapter -Slot "Conduction" -Signal $ConductionSignal -ItemSignal $ItemSignal -Activity "ST" -Plan $clonedCachePlan | Select-Object -Last 1
                     if ($opSignal.MergeSignalAndVerifyFailure($conductionSignal)) {return $opSignal}
-
+                    
                     break
                 }
                 "SendMessage" {
@@ -156,7 +164,7 @@ class Network_AzureApplicationInsights {
 
 
                 default {
-                    $opSignal.LogWarning("⚠️ Unsupported Activity: $Activity")
+                    $opSignal.LogWarning("Unsupported Activity: $Activity")
                     $resultSignal = [Signal]::Start("StorageNetwork.UnsupportedActivity", $ItemSignal) | Select-Object -Last 1
                     break
                 }
@@ -168,7 +176,7 @@ class Network_AzureApplicationInsights {
                     $opSignal.SetResult($resultSignal.GetResult($true))
                     $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
                 } else {
-                    $opSignal.LogWarning("⚠️ $Slot.$Activity did not succeed.")
+                    $opSignal.LogWarning("$Slot.$Activity did not succeed.")
                 }
             }
 

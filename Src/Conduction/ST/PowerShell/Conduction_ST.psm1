@@ -69,7 +69,7 @@ class Conduction_ST {
                 $opSignal.SetResult($resultSignal.GetResult())
                 $opSignal.LogInformation("✅ Ran successfully.")
             } else {
-                $opSignal.LogWarning("⚠️ Failed to Run.")
+                $opSignal.LogWarning("Failed to Run.")
             }
         }
         catch {

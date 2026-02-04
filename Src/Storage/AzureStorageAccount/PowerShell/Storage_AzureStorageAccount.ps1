@@ -60,7 +60,7 @@ class Storage_AzureStorageAccount {
                 $opSignal.LogInformation("📄 JSON content parsed successfully from: $virtualPath")
             }
             else {
-                $opSignal.LogWarning("⚠️ No raw content found at: $virtualPath")
+                $opSignal.LogWarning("No raw content found at: $virtualPath")
             }
         }
         catch {
@@ -94,7 +94,7 @@ class Storage_AzureStorageAccount {
                 }
             }
 
-            $opSignal.LogWarning("⚠️ File '$pathWithExtension' not found in any address.")
+            $opSignal.LogWarning("File '$pathWithExtension' not found in any address.")
         }
         catch {
             $opSignal.LogCritical("🔥 Exception in EmbeddedFileSystem.ReadObject: $($_.Exception.Message)", $null, $_)

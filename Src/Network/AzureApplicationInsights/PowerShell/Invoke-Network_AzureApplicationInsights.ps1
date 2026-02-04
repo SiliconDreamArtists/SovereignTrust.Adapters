@@ -50,7 +50,7 @@ function Invoke-Queue_AzureStorageQueue()
         #$resultSignal = Invoke-AllCommandStepOutputs -Phases $phases
         
         if ($opSignal.MergeSignalAndVerifyFailure($resultSignal)) {
-            $opSignal.LogCritical("⚠️ Failed to process all command step outputs.")
+            $opSignal.LogCritical("Failed to process all command step outputs.")
             return $opSignal
         }
 

@@ -33,12 +33,16 @@ function Invoke-Conduction_ST {
 
         # Generate a Signal Graph of the Phases
         $gridResultSignal = Invoke-CondenserAdapter -Slot "Conduit" -Activity "Graph" -Signal $Signal -Plan $GridPlan -ItemSignal $ConductionPlanSignal | Select-Object -Last 1
+        if ($opSignal.MergeSignalAndVerifyFailure($gridResultSignal)) { return $opSignal }
+
         $gridSignal = $gridResultSignal.GetResult()
 
         $phasesSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Phases" | Select-Object -Last 1
-        #        $phasesFlatArray = $phasesSignal.GetResult($true)
+        if ($opSignal.MergeSignalAndVerifyFailure($phasesSignal)) { return $opSignal }
 
         $phaseGraphJacketSignal = Invoke-Conduction_ST_GetNextPhaseSet -DependsOn "" -PhaseArraySignal $phasesSignal -PhasesGridSignal $gridResultSignal
+        if ($opSignal.MergeSignalAndVerifyFailure($phaseGraphJacketSignal)) { return $opSignal }
+
         $phaseGraphSignal = [Signal]::Start("Conduction Plan Signal") | Select-Object -Last 1
         $phaseGraphSignal.SetJacket($phaseGraphJacketSignal)
         
@@ -112,7 +116,7 @@ function Invoke-Conduction_ST {
             $resultSignal = $opSignal
 
             if ($opSignal.MergeSignalAndVerifyFailure($resultSignal)) {
-                $opSignal.LogCritical("⚠️ Failed to process all command step outputs.")
+                $opSignal.LogCritical("Failed to process all command step outputs.")
                 return $opSignal
             }
             #    }
@@ -162,7 +166,7 @@ function Invoke-Conduction_ST {
             #$resultSignal = Invoke-AllCommandStepOutputs -Phases $phases
             
             if ($opSignal.MergeSignalAndVerifyFailure($resultSignal)) {
-                $opSignal.LogCritical("⚠️ Failed to process all command step outputs.")
+                $opSignal.LogCritical("Failed to process all command step outputs.")
                 return $opSignal
             }
         }

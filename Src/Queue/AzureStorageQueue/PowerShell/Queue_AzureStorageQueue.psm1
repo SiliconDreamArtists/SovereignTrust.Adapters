@@ -78,7 +78,7 @@ class Queue_AzureStorageQueue {
             $opSignal.SetJacket($ConductionSignal)
 
             if (-not $Activity) {
-                $opSignal.LogWarning("⚠️ No Activity provided to Queue_AzureStorageQueue.Invoke()")
+                $opSignal.LogWarning("No Activity provided to Queue_AzureStorageQueue.Invoke()")
                 return $opSignal
             }
 
@@ -91,7 +91,7 @@ class Queue_AzureStorageQueue {
                 # Optional fallback: pull config from Environment/Jacket
                 # $env = $ConductionSignal.GetJacket().GetResult()
                 # $configSignal = Resolve-PathFromDictionary -Dictionary $env -Path "Queue.StorageQueue.Config" -SignalLevel "Warning" | Select-Object -Last 1
-                $opSignal.LogWarning("⚠️ StorageQueue Config not found on Plan.Config (no fallback enabled).")
+                $opSignal.LogWarning("StorageQueue Config not found on Plan.Config (no fallback enabled).")
             }
 
             $resultSignal = $null
@@ -206,7 +206,7 @@ class Queue_AzureStorageQueue {
                     # Plan should contain the payload to write
                     # e.g. Plan.MessageText or Plan.Payload etc.
                     # Placeholder: wire to your Write-StorageQueueApi when available.
-                    $opSignal.LogWarning("⚠️ WriteItem not implemented yet (wire to Write-StorageQueueApi).")
+                    $opSignal.LogWarning("WriteItem not implemented yet (wire to Write-StorageQueueApi).")
                     $resultSignal = [Signal]::Start("StorageQueue.WriteItem.Unresolved", $ItemSignal) | Select-Object -Last 1
                     break
                 }
@@ -259,13 +259,13 @@ class Queue_AzureStorageQueue {
                     $vis = $visSignal.HasResult() ? [int]$visSignal.GetResult() : 30
 
                     if (-not $msg) {
-                        $opSignal.LogWarning("⚠️ DeferItem requires ItemSignal.Result to be the message object.")
+                        $opSignal.LogWarning("DeferItem requires ItemSignal.Result to be the message object.")
                         $resultSignal = [Signal]::Start("StorageQueue.DeferItem.Unresolved", $ItemSignal) | Select-Object -Last 1
                         break
                     }
 
                     if (-not ($msg | Get-Member -Name "MessageId") -or -not ($msg | Get-Member -Name "PopReceipt")) {
-                        $opSignal.LogWarning("⚠️ DeferItem requires MessageId + PopReceipt on message.")
+                        $opSignal.LogWarning("DeferItem requires MessageId + PopReceipt on message.")
                         $resultSignal = [Signal]::Start("StorageQueue.DeferItem.Unresolved", $ItemSignal) | Select-Object -Last 1
                         break
                     }
@@ -274,13 +274,13 @@ class Queue_AzureStorageQueue {
                     # $deferSignal = Update-StorageQueueVisibilityApi -Config $config -MessageId $msg.MessageId -PopReceipt $msg.PopReceipt -Visibilitytimeout $vis | Select-Object -Last 1
                     # $resultSignal = $deferSignal
 
-                    $opSignal.LogWarning("⚠️ DeferItem not implemented yet (wire to Update-StorageQueueVisibilityApi).")
+                    $opSignal.LogWarning("DeferItem not implemented yet (wire to Update-StorageQueueVisibilityApi).")
                     $resultSignal = [Signal]::Start("StorageQueue.DeferItem.Unresolved", $ItemSignal) | Select-Object -Last 1
                     break
                 }
 
                 default {
-                    $opSignal.LogWarning("⚠️ Unsupported Activity: $Activity")
+                    $opSignal.LogWarning("Unsupported Activity: $Activity")
                     $resultSignal = [Signal]::Start("StorageQueue.UnsupportedActivity", $ItemSignal) | Select-Object -Last 1
                     break
                 }
@@ -292,7 +292,7 @@ class Queue_AzureStorageQueue {
                     $opSignal.SetResult($resultSignal.GetResult($true))
                     $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
                 } else {
-                    $opSignal.LogWarning("⚠️ $Slot.$Activity did not succeed.")
+                    $opSignal.LogWarning("$Slot.$Activity did not succeed.")
                 }
             }
 
