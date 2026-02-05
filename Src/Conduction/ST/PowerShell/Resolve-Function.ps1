@@ -23,7 +23,7 @@ function Resolve-Function {
         $msg = "Function '$Function' is not loaded."
 
         if ($ThrowOnMissing) {
-            $opSignal.LogCritical("❌ $msg")
+            $opSignal.LogCritical("$msg")
         } else {
             $opSignal.LogWarning("$msg")
         }

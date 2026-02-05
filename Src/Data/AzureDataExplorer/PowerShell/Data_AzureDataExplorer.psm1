@@ -67,7 +67,7 @@ class Data_AzureDataExplorer {
 
         try {
             if (-not $ConductionSignal) {
-                $opSignal.LogCritical("❌ Null ConductionSignal passed to Queue_AzureStorageQueue.Invoke()")
+                $opSignal.LogCritical("Null ConductionSignal passed to Queue_AzureStorageQueue.Invoke()")
                 return $opSignal
             }
 

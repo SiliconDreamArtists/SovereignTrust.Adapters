@@ -71,7 +71,7 @@ class Network_AzureApplicationInsights {
 
         try {
             if (-not $ConductionSignal) {
-                $opSignal.LogCritical("❌ Null ConductionSignal passed to Network_AzureApplicationInsights.Invoke()")
+                $opSignal.LogCritical("Null ConductionSignal passed to Network_AzureApplicationInsights.Invoke()")
                 return $opSignal
             }
 
@@ -97,12 +97,23 @@ class Network_AzureApplicationInsights {
             switch ($Activity) {
                 # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
                 "EmitSignalFull" {
-                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
-                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
 
-                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
-                    $ItemSignal.AddTag("Skip")
-                    foreach ($entry in $ItemSignal.Entries)
+                    [Signal]$EmitSignal  = Start-SignalWrapper -Name $ItemSignal.Name
+                    $EmitSignal.MergeSignal($ItemSignal, $null, "Skip")
+                    $EmitSignal.Tags = $ItemSignal.Tags
+                    $EmitSignal.Meta = $ItemSignal.Meta
+
+                    foreach ($entry in $EmitSignal.Entries)
+                    {
+                        $entry.Signal = $EmitSignal
+                    }
+
+                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $EmitSignal)
+                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $EmitSignal)
+
+                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $EmitSignal -Path "*.#.Entries.@" | Select-Object -Last 1
+#                    $ItemSignal.AddTag("Skip")
+                    foreach ($entry in $EmitSignal.Entries)
                     {
                         $entry.AddTag("Skip")
                     }

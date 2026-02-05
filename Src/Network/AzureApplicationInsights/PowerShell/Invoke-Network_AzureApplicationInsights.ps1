@@ -21,7 +21,7 @@ function Invoke-Queue_AzureStorageQueue()
         $environmentSignal = Resolve-PathFromDictionary -Dictionary $ConductionSignal -Path "%.@.Environment" | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure($environmentSignal)) {
-            $opSignal.LogCritical("❌ Failed to resolve 'Environment' from ConductionSignal.")
+            $opSignal.LogCritical("Failed to resolve 'Environment' from ConductionSignal.")
             return $opSignal
         }
 
@@ -29,7 +29,7 @@ function Invoke-Queue_AzureStorageQueue()
         $phasesSignal = Resolve-PathFromDictionary -Dictionary $ConductionSignal -Path "%.@.ConductionPlan" | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure($phasesSignal)) {
-            $opSignal.LogCritical("❌ Failed to resolve 'Phases' from ConductionSignal.")
+            $opSignal.LogCritical("Failed to resolve 'Phases' from ConductionSignal.")
             return $opSignal
         }
 

@@ -14,12 +14,12 @@ function Invoke-ConductionPhaseSet {
         [object]$Plan
     )
 
-    $opSignal = Start-SignalWrapper -Name "Invoke-ConductionPhaseSet" -ReversePointer $Signal
-
+    $opSignal = Start-SignalWrapper -Name "Invoke-ConductionPhaseSet $($Plan.Name)" -ReversePointer $Signal
     $phaseSet = $ItemSignal.GetJacketResult()
 
     foreach ($phaseSignal in $phaseSet) {
-        $phaseJacketSignal = [Signal]::Start("Invoke-ConductionPhaseSet", $Signal) | Select-Object -Last 1
+        $phaseJacketSignal = [Signal]::Start("Invoke-ConductionPhase $($Plan.Name).", $Signal) | Select-Object -Last 1
+        $phaseJacketSignal.AddTag("ConductionPhase")
         $phaseJacketSignal.SetJacket($phaseSignal)
         
         # Passing through the original ItemSignal passed through the condenser/conduction for processing in the phases
@@ -32,6 +32,7 @@ function Invoke-ConductionPhaseSet {
             $SkipTelemetrySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "ExcludeFromTelemetry" -Default $false | Select-Object -Last 1
 
             if (-not $SkipTelemetrySignal.GetResult()) {
+                $phaseResult.AddTag("ConductionPhase")
                 Invoke-Telemetry -Signal $Signal -ItemSignal $phaseResult
             }
 
@@ -62,8 +63,13 @@ function Invoke-ConductionPhase {
         [Parameter(Mandatory)][object]$Plan
     )
 
-    $opSignal = [Signal]::Start("Invoke-ConductionPhase", $Signal) | Select-Object -Last 1
+    $opSignal = [Signal]::Start("Invoke-ConductionPhase  $($Plan.Name)", $Signal) | Select-Object -Last 1
 
+    $descriptionSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Description" -SignalLevel "Information" | Select-Object -Last 1
+    if ($descriptionSignal.HasResult())
+    {
+        $opSignal.LogInformation($descriptionSignal.GetResult(), @("Verbose"))
+    }
     # ---- Helpers (Signal-safe; Resolve-PathFromDictionary only) ----
 
     function _Resolve-String {

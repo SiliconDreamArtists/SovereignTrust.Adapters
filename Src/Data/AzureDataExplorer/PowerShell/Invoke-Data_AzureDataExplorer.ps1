@@ -59,7 +59,7 @@ function Invoke-Data_AzureDataExplorer {
                 # Get current phase set
                 $phaseListSignal = Invoke-Data_AzureDataExplorer_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal -Slot $Slot | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
-                    $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
+                    $opSignal.LogCritical("Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
                 }
 
@@ -88,7 +88,7 @@ function Invoke-Data_AzureDataExplorer {
                 # Fetch inner phase set and recurse
                 $innerPhaseListSignal = Invoke-Data_AzureDataExplorer_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal -CurrentPhaseSignal $phase | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($innerPhaseListSignal)) {
-                    $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
+                    $opSignal.LogCritical("Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
                 }
 
@@ -123,7 +123,7 @@ function Invoke-Data_AzureDataExplorer {
         ############################################################        
         $phaseListSignal = Invoke-Data_AzureDataExplorer_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal | Select-Object -Last 1
         if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
-            $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
+            $opSignal.LogCritical("Failed to resolve next phase set from ConductionPlan.")
             return $opSignal
         }
 
@@ -144,7 +144,7 @@ function Invoke-Data_AzureDataExplorer {
 
                 $innerPhaseListSignal = Invoke-Data_AzureDataExplorer_GetNextPhaseSet -phaseGraphSignal $phaseGraphSignal  | Select-Object -Last 1
                 if ($opSignal.MergeSignalAndVerifyFailure($phaseListSignal)) {
-                    $opSignal.LogCritical("❌ Failed to resolve next phase set from ConductionPlan.")
+                    $opSignal.LogCritical("Failed to resolve next phase set from ConductionPlan.")
                     return $opSignal
                 }
 
