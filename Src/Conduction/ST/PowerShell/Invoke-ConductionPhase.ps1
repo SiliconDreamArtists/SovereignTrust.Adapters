@@ -17,23 +17,44 @@ function Invoke-ConductionPhaseSet {
     $opSignal = Start-SignalWrapper -Name "Invoke-ConductionPhaseSet $($Plan.Name)" -ReversePointer $Signal
     $phaseSet = $ItemSignal.GetJacketResult()
 
+    $SkipTelemetrySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "ExcludeFromTelemetry" -Default $false | Select-Object -Last 1
+
     foreach ($phaseSignal in $phaseSet) {
-        $phaseJacketSignal = [Signal]::Start("Invoke-ConductionPhase $($Plan.Name).", $Signal) | Select-Object -Last 1
-        $phaseJacketSignal.AddTag("ConductionPhase")
-        $phaseJacketSignal.SetJacket($phaseSignal)
+        $phase = $phaseSignal.GetJacket().GetResult()
+        $conductionPhaseSignal = [Signal]::Start("Invoke-ConductionPhase: '$($phase.Name)' for plan: '$($Plan.Name)'.", $Signal) | Select-Object -Last 1
+        $conductionPhaseSignal.SetJacket($Signal)
+        $conductionPhaseSignal.SetControl($Signal.GetControl($true))
+        if (-not $SkipTelemetrySignal.GetResult()) {
+            $conductionPhaseSignal.AddTag("ConductionPhase")
+            $conductionPhaseSignal.AddProperty("SignalType", "ConductionPhase")
+            $conductionPhaseSignal.AddProperty("ConductionId", $Signal.Id)
+            $conductionPhaseSignal.AddProperty("OperationId", $Signal.Id)
+            $conductionPhaseSignal.AddProperty("SuboperationId", $conductionPhaseSignal.Id)
+            $conductionPhaseSignal.AddProperty("ConductionPhaseId", $conductionPhaseSignal.Id)
+            $conductionPhaseSignal.AddProperty("PlanId", $Signal.GetProperty("PlanId"))
+            $conductionPhaseSignal.AddProperty("PlanName", $Signal.GetProperty("PlanName"))
+            $conductionPhaseSignal.AddProperty("PhaseId", $phase.Id)
+            $conductionPhaseSignal.AddProperty("PhaseName", $phase.Name)
+
+            $conductionPhaseSignal.AddProperty("State", "Started")
+            $conductionPhaseSignal.AddProperty("StartedAt", [DateTime]::UtcNow)
+            $conductionPhaseSignal.MergeSignal($phaseResult)
+            Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
+        }
         
         # Passing through the original ItemSignal passed through the condenser/conduction for processing in the phases
         $phaseSignal.SetResult($ItemSignal)
         $phaseResult = Invoke-ConductionPhase `
-            -Signal $Signal `
+            -Signal $conductionPhaseSignal `
             -ItemSignal $phaseSignal `
             -Plan $Plan | Select-Object -Last 1
 
-            $SkipTelemetrySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "ExcludeFromTelemetry" -Default $false | Select-Object -Last 1
 
             if (-not $SkipTelemetrySignal.GetResult()) {
-                $phaseResult.AddTag("ConductionPhase")
-                Invoke-Telemetry -Signal $Signal -ItemSignal $phaseResult
+                $conductionPhaseSignal.MergeSignal($phaseResult)
+                $conductionPhaseSignal.AddProperty("State", "Completed")
+                $conductionPhaseSignal.AddProperty("EndedAt", [DateTime]::UtcNow)
+                Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
             }
 
         if ($opSignal.MergeSignalAndVerifyFailure($phaseResult)) {
@@ -215,6 +236,14 @@ function Invoke-ConductionPhase {
         | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure(@($sourceSignal))) {
+            ################ ADDED FOR DEBUYGGING, DONT CHECK IN
+        $sourceSignal = Invoke-CondenserAdapter `
+            -Slot "Memory" `
+            -Activity "Generate" `
+            -Signal $Signal `
+            -Plan $phaseDict `
+            -ItemSignal $TargetSignal `
+        | Select-Object -Last 1
             $opSignal.LogCritical("Memory.Generate failed while resolving ConductionPlan.")
             return $opSignal
         }

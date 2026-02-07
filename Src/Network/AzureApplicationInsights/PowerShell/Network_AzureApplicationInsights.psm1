@@ -98,6 +98,7 @@ class Network_AzureApplicationInsights {
                 # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
                 "EmitSignalFull" {
 
+                    <#
                     [Signal]$EmitSignal  = Start-SignalWrapper -Name $ItemSignal.Name
                     $EmitSignal.MergeSignal($ItemSignal, $null, "Skip")
                     $EmitSignal.Tags = $ItemSignal.Tags
@@ -110,14 +111,24 @@ class Network_AzureApplicationInsights {
 
                     $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $EmitSignal)
                     $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $EmitSignal)
+                    #>
+                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
+                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
 
-                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $EmitSignal -Path "*.#.Entries.@" | Select-Object -Last 1
+#                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
+                    foreach ($entry in $ItemSignal.Entries)
+                    {
+                        $entry.AddTag("Skip")
+                    }
+#>
 #                    $ItemSignal.AddTag("Skip")
+
+<#
                     foreach ($entry in $EmitSignal.Entries)
                     {
                         $entry.AddTag("Skip")
                     }
-
+#>
                     break
                 }
                 { $_ -in @("EmitEntries", "EmitSignal") } {
