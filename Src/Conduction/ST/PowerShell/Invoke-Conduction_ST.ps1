@@ -106,6 +106,7 @@ function Invoke-Conduction_ST {
         if (-not $SkipTelemetrySignal.GetResult()) {
             $conductionSignal.MergeSignal($opSignal, $null, "Skip")
             $conductionSignal.AddProperty("State", "Completed")
+            $conductionSignal.ModifiedDate = Get-Date
             $conductionSignal.AddProperty("EndedAt", [DateTime]::UtcNow)
             Invoke-Telemetry -Signal $Signal -ItemSignal $conductionSignal
         }

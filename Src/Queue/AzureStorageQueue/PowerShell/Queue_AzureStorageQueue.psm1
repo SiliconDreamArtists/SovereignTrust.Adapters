@@ -109,35 +109,97 @@ class Queue_AzureStorageQueue {
                 "HandleMessage" {
                     $MessageTextSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "%.@.MessageText" | Select-Object -Last 1
                     if ($opSignal.MergeSignalAndVerifyFailure($MessageTextSignal)) { return $opSignal }
-                                $MessageText = $MessageTextSignal.GetResult()
-                                $text = ([string]$MessageText).Trim()
+                    $MessageText = $MessageTextSignal.GetResult()
+                    $text = ([string]$MessageText).Trim()
 
-                                # Try Base64→UTF8 (heuristic): re-encode equality ignoring trailing '=' padding
-                                $decoded = $text
-                                $wasBase64 = $false
-                                try {
-                                    $bytes = [Convert]::FromBase64String($text)
-                                    $reencode = [Convert]::ToBase64String($bytes)
-                                    if ($reencode.TrimEnd('=') -eq $text.Trim().TrimEnd('=')) {
-                                        $decoded = [Text.Encoding]::UTF8.GetString($bytes)
-                                        $wasBase64 = $true
-                                    }
-                                }
-                                catch { }
+                    # Try Base64→UTF8 (heuristic): re-encode equality ignoring trailing '=' padding
+                    $decoded = $text
+                    $wasBase64 = $false
+                    try {
+                        $bytes = [Convert]::FromBase64String($text)
+                        $reencode = [Convert]::ToBase64String($bytes)
+                        if ($reencode.TrimEnd('=') -eq $text.Trim().TrimEnd('=')) {
+                            $decoded = [Text.Encoding]::UTF8.GetString($bytes)
+                            $wasBase64 = $true
+                        }
+                    }
+                    catch { }
 
-                                # Undo HtmlEncode we do during Write-StorageQueueApi
-                                $decoded = [System.Net.WebUtility]::HtmlDecode($decoded)
+                    # Undo HtmlEncode we do during Write-StorageQueueApi
+                    $decoded = [System.Net.WebUtility]::HtmlDecode($decoded)
 
-                                $MessageItem = $decoded | ConvertFrom-Json -Depth 10
-                                # Run Item  Process
+                    $MessageItem = $decoded | ConvertFrom-Json -Depth 10
+                    # Run Item  Process
 
-                                $DecodedItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
-                                $DecodedItemSignal.SetResult($MessageItem)
+                    $DecodedItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                    $DecodedItemSignal.SetResult($MessageItem)
 
 
-                                # Now delete Item
-                                $deleteResultSignal = $this.Invoke($Slot, "AckItem", $ConductionSignal, $Plan, $ItemSignal)
-                                $opSignal.MergeSignal($deleteResultSignal)
+                    # TODO: This handeling needs to be moved to a condenser call that calls the discord network adapter message handler.
+
+                    # TODO: These mappings should be done in a plan to create a new config object to pass on
+                    $applicationIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.application_id" | Select-Object -Last 1
+                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
+                    $channelTypeSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.type" | Select-Object -Last 1
+                    $interactionIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.id" | Select-Object -Last 1
+                    $interactionSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.token" | Select-Object -Last 1
+                    $replySignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.value" | Select-Object -Last 1
+                    $nameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.name" | Select-Object -Last 1
+ 
+                    $applicationId = $applicationIdSignal.GetResult()
+                    $interactionId = $interactionIdSignal.GetResult()
+                    $interactionToken = $interactionSignal.GetResult()
+                    $channelId = $channelIdSignal.GetResult()
+                    $channelType = $channelTypeSignal.GetResult()
+                    $name = $nameSignal.GetResult()
+                    $reply = $replySignal.GetResult()
+  
+
+                    # Channel ID Is used to hold a conversation in the message graph
+                    # Name is the activity to perform and then specific handling for the way it's done
+                    # Open -> run a plan, we'll have default values plugged into the config of the caller of the service and then override with parts Container.Resource.Path, special handling for : as the delimeter in order to support periods in paths converting to slashes
+                    # Direction -> response to a prompt
+                    # Can Open items by running a plan that puts content in memory and then subsequent plans can use that
+                    # Each Thread/Channel is a conduction with it's own operating memory, each plan run is essentially a phase inside of that conduction (like a conduction plan that calls another conduction plan is all inside the same conduction plan, all attached to the processid of the session)
+                    # This allows for opening a publisher, enrolling a project, the project ad publisher are loaded
+                    # Reverse cascading opens opens an item at a level and then loads the prior content into memory, just like the SDA conductions did
+                    # This allows multiple users to exist in the same conduction pipeline with different owners
+                    # Finish Support for multi-threaded runspaces that share the same conductor for multple users and processes inside the same powershell runtie
+                    # Finish the C# implementation of the system to move that into a service hosted in azure
+                    # Move hosting to BDDB.IO instead of done directly through SDA. BDDB.IO can work out hosting deals including charity donations for supporting projects that use sovereign trust using Signalarity.Network domain 
+
+
+                    
+
+                    <# Not done here, this call back to wait for further interaction from the service is done at the azure function handler. #> <#
+                    $uri = "https://discord.com/api/v10/interactions/$interactionId/$interactionToken/callback"
+
+                    $body = @{
+                        type = 5
+                    } | ConvertTo-Json -Depth 5
+                    try {
+                       # Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body $body
+                    }
+                    catch {
+                        $a = $_
+                    }
+                    #>
+
+                    # Response Message to Discord
+                    $uri = "https://discord.com/api/v10/webhooks/$applicationId/$interactionToken"
+                    $body = @{
+                        content = "this is my message: $($name): '$reply'"
+                    } | ConvertTo-Json -Depth 5
+                    try {
+                        Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body $body
+                    }
+                    catch {
+                        $a = $_
+                    }
+                    
+                    # Now delete Item
+                    $deleteResultSignal = $this.Invoke($Slot, "AckItem", $ConductionSignal, $Plan, $ItemSignal)
+                    $opSignal.MergeSignal($deleteResultSignal)
 
                     break
                 }
@@ -196,8 +258,9 @@ class Queue_AzureStorageQueue {
                     if ($opSignal.MergeSignalAndVerifyFailure($transformResultSignal)) { return $opSignal }
                     $responseJacketSignal.SetJacket($transformResultSignal)
 
+                    $result = @($responseJacketSignal.GetJacket().GetResult($true) ?? [PSCustomObject]@{})
                     # Set the result value from the rest endpoint
-                    $opSignal.SetResult($responseJacketSignal.GetJacket().GetResult($true))
+                    $opSignal.SetResult($result)
 
                     break
                 }
@@ -226,7 +289,7 @@ class Queue_AzureStorageQueue {
 
                     try {
                         $clonePlan = $Plan | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
-                        Add-PathToDictionary -Dictionary $clonePlan -Path "QueryString" -Value $querystring
+                        Add-PathToDictionary -Dictionary $clonePlan -Path "Config.QueryString" -Value $querystring
 
                         $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" -Default 1 | Select-Object -Last 1
                         $HostAddress = $HostSignal.GetResult()
@@ -234,9 +297,10 @@ class Queue_AzureStorageQueue {
                         $UriSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" -Default 1 | Select-Object -Last 1
                         $Uri = $UriSignal.GetResult()
 
-                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Uri" -Value "$HostAddress/$Uri"
-                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Host" -Value "$HostAddress"
-                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "CacheAccessToken" -Value $true
+                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value "$HostAddress/$Uri"
+                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Host" -Value "$HostAddress"
+                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Method" -Value "Delete"
+                        $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.CacheAccessToken" -Value $true
 
                         $responseJacketSignal = [Signal]::Start("Queue_AzureStorageQueue.Invoke:$Slot.$Activity.Jacket", $ItemSignal) | Select-Object -Last 1
 
@@ -291,7 +355,8 @@ class Queue_AzureStorageQueue {
                 if ($resultSignal.Success()) {
                     $opSignal.SetResult($resultSignal.GetResult($true))
                     $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
-                } else {
+                }
+                else {
                     $opSignal.LogWarning("$Slot.$Activity did not succeed.")
                 }
             }

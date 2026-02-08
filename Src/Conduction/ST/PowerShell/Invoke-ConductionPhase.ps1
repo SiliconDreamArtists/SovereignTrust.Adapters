@@ -20,6 +20,16 @@ function Invoke-ConductionPhaseSet {
     $SkipTelemetrySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "ExcludeFromTelemetry" -Default $false | Select-Object -Last 1
 
     foreach ($phaseSignal in $phaseSet) {
+        $continue = $true
+        $repeatCountSignal = Resolve-PathFromDictionary -Dictionary $phaseSignal -Path "%.@.RepeatCount" -Default 0 | Select-Object -Last 1
+        $repeatDelayMSSignal = Resolve-PathFromDictionary -Dictionary $phaseSignal -Path "%.@.RepeatDelayMS" -Default 0 | Select-Object -Last 1
+
+        $repeatCount = $repeatCountSignal.GetResult()
+        $repeatDelayMS = $repeatDelayMSSignal.GetResult()
+        
+        $runcount = 0
+        while ($continue) {
+            $runCount++
         $phase = $phaseSignal.GetJacket().GetResult()
         $conductionPhaseSignal = [Signal]::Start("Invoke-ConductionPhase: '$($phase.Name)' for plan: '$($Plan.Name)'.", $Signal) | Select-Object -Last 1
         $conductionPhaseSignal.SetJacket($Signal)
@@ -52,6 +62,7 @@ function Invoke-ConductionPhaseSet {
 
             if (-not $SkipTelemetrySignal.GetResult()) {
                 $conductionPhaseSignal.MergeSignal($phaseResult)
+                $conductionPhaseSignal.ModifiedDate = Get-Date
                 $conductionPhaseSignal.AddProperty("State", "Completed")
                 $conductionPhaseSignal.AddProperty("EndedAt", [DateTime]::UtcNow)
                 Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
@@ -64,8 +75,15 @@ function Invoke-ConductionPhaseSet {
             return $opSignal
         }
 
-        # TODO: Add Repeat Logic for repeating a Conduction Phase
+        # Repeat Logic for exiting or repeating the Conduction Phase
+        if ($runcount -gt $repeatCount -and $repeatCount -ne -1) {
+            break
+        }
+        else {
+            Start-Sleep -Milliseconds $repeatDelayMS
+        }
     }
+}
 
     return $opSignal
 }
@@ -230,7 +248,7 @@ function Invoke-ConductionPhase {
         $sourceSignal = Invoke-CondenserAdapter `
             -Slot "Memory" `
             -Activity "Generate" `
-            -Signal $Signal `
+            -Signal $Signal.GetControl($true) `
             -Plan $phaseDict `
             -ItemSignal $TargetSignal `
         | Select-Object -Last 1
@@ -240,7 +258,7 @@ function Invoke-ConductionPhase {
         $sourceSignal = Invoke-CondenserAdapter `
             -Slot "Memory" `
             -Activity "Generate" `
-            -Signal $Signal `
+            -Signal $Signal.GetControl($true) `
             -Plan $phaseDict `
             -ItemSignal $TargetSignal `
         | Select-Object -Last 1
@@ -288,7 +306,7 @@ function Invoke-ConductionPhase {
             $sourceSignal = Invoke-CondenserAdapter `
                 -Slot "Memory" `
                 -Activity "Generate" `
-                -Signal $Signal `
+                -Signal $Signal.GetControl($true) `
                 -Plan $PostPlan `
                 -ItemSignal $TargetSignal `
             | Select-Object -Last 1

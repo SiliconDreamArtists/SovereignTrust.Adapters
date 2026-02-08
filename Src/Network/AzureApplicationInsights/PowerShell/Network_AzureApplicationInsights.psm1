@@ -112,8 +112,8 @@ class Network_AzureApplicationInsights {
                     $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $EmitSignal)
                     $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $EmitSignal)
                     #>
-                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
-                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
+#                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
+ #                   $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
 
 #                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
                     foreach ($entry in $ItemSignal.Entries)
