@@ -30,34 +30,34 @@ function Invoke-ConductionPhaseSet {
         $runcount = 0
         while ($continue) {
             $runCount++
-            $phase = $phaseSignal.GetJacket().GetResult()
-            $conductionPhaseSignal = [Signal]::Start("Invoke-ConductionPhase: '$($phase.Name)' for plan: '$($Plan.Name)'. Run: $runCount", $Signal) | Select-Object -Last 1
-            $conductionPhaseSignal.SetJacket($Signal)
-            $conductionPhaseSignal.SetControl($Signal.GetControl($true))
-            if (-not $SkipTelemetrySignal.GetResult()) {
-                $conductionPhaseSignal.AddTag("ConductionPhase")
-                $conductionPhaseSignal.AddProperty("SignalType", "ConductionPhase")
-                $conductionPhaseSignal.AddProperty("ConductionId", $Signal.Id)
-                $conductionPhaseSignal.AddProperty("OperationId", $Signal.Id)
-                $conductionPhaseSignal.AddProperty("SuboperationId", $conductionPhaseSignal.Id)
-                $conductionPhaseSignal.AddProperty("ConductionPhaseId", $conductionPhaseSignal.Id)
-                $conductionPhaseSignal.AddProperty("PlanId", $Signal.GetProperty("PlanId"))
-                $conductionPhaseSignal.AddProperty("PlanName", $Signal.GetProperty("PlanName"))
-                $conductionPhaseSignal.AddProperty("PhaseId", $phase.Id)
-                $conductionPhaseSignal.AddProperty("PhaseName", $phase.Name)
+        $phase = $phaseSignal.GetJacket().GetResult()
+        $conductionPhaseSignal = [Signal]::Start("Invoke-ConductionPhase: '$($phase.Name)' for plan: '$($Plan.Name)'.", $Signal) | Select-Object -Last 1
+        $conductionPhaseSignal.SetJacket($Signal)
+        $conductionPhaseSignal.SetControl($Signal.GetControl($true))
+        if (-not $SkipTelemetrySignal.GetResult()) {
+            $conductionPhaseSignal.AddTag("ConductionPhase")
+            $conductionPhaseSignal.AddProperty("SignalType", "ConductionPhase")
+            $conductionPhaseSignal.AddProperty("ConductionId", $Signal.Id)
+            $conductionPhaseSignal.AddProperty("OperationId", $Signal.Id)
+            $conductionPhaseSignal.AddProperty("SuboperationId", $conductionPhaseSignal.Id)
+            $conductionPhaseSignal.AddProperty("ConductionPhaseId", $conductionPhaseSignal.Id)
+            $conductionPhaseSignal.AddProperty("PlanId", $Signal.GetProperty("PlanId"))
+            $conductionPhaseSignal.AddProperty("PlanName", $Signal.GetProperty("PlanName"))
+            $conductionPhaseSignal.AddProperty("PhaseId", $phase.Id)
+            $conductionPhaseSignal.AddProperty("PhaseName", $phase.Name)
 
-                $conductionPhaseSignal.AddProperty("State", "Started")
-                $conductionPhaseSignal.AddProperty("StartedAt", [DateTime]::UtcNow)
-                $conductionPhaseSignal.MergeSignal($phaseResult)
-                Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
-            }
+            $conductionPhaseSignal.AddProperty("State", "Started")
+            $conductionPhaseSignal.AddProperty("StartedAt", [DateTime]::UtcNow)
+            $conductionPhaseSignal.MergeSignal($phaseResult)
+            Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
+        }
         
-            # Passing through the original ItemSignal passed through the condenser/conduction for processing in the phases
-            $phaseSignal.SetResult($ItemSignal)
-            $phaseResult = Invoke-ConductionPhase `
-                -Signal $conductionPhaseSignal `
-                -ItemSignal $phaseSignal `
-                -Plan $Plan | Select-Object -Last 1
+        # Passing through the original ItemSignal passed through the condenser/conduction for processing in the phases
+        $phaseSignal.SetResult($ItemSignal)
+        $phaseResult = Invoke-ConductionPhase `
+            -Signal $conductionPhaseSignal `
+            -ItemSignal $phaseSignal `
+            -Plan $Plan | Select-Object -Last 1
 
 
             if (-not $SkipTelemetrySignal.GetResult()) {
@@ -68,22 +68,22 @@ function Invoke-ConductionPhaseSet {
                 Invoke-Telemetry -Signal $Signal -ItemSignal $conductionPhaseSignal
             }
 
-            if ($opSignal.MergeSignalAndVerifyFailure($phaseResult)) {
+        if ($opSignal.MergeSignalAndVerifyFailure($phaseResult)) {
 
-                # TODO: Add Recovery option for a phase
-                # TODO: Add Failure so that phases can continue during a failure
-                return $opSignal
-            }
+            # TODO: Add Recovery option for a phase
+            # TODO: Add Failure so that phases can continue during a failure
+            return $opSignal
+        }
 
-            # Repeat Logic for exiting or repeating the Conduction Phase
-            if ($runcount -gt $repeatCount -and $repeatCount -ne -1) {
-                break
-            }
-            else {
-                Start-Sleep -Milliseconds $repeatDelayMS
-            }
+        # Repeat Logic for exiting or repeating the Conduction Phase
+        if ($runcount -gt $repeatCount -and $repeatCount -ne -1) {
+            break
+        }
+        else {
+            Start-Sleep -Milliseconds $repeatDelayMS
         }
     }
+}
 
     return $opSignal
 }
@@ -105,7 +105,8 @@ function Invoke-ConductionPhase {
     $opSignal = [Signal]::Start("Invoke-ConductionPhase  $($Plan.Name)", $Signal) | Select-Object -Last 1
 
     $descriptionSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Description" -SignalLevel "Information" | Select-Object -Last 1
-    if ($descriptionSignal.HasResult()) {
+    if ($descriptionSignal.HasResult())
+    {
         $opSignal.LogInformation($descriptionSignal.GetResult(), @("Verbose"))
     }
     # ---- Helpers (Signal-safe; Resolve-PathFromDictionary only) ----
@@ -167,9 +168,9 @@ function Invoke-ConductionPhase {
         if ([string]::IsNullOrWhiteSpace($action)) { $action = "Invoke-MappedAdapter" }
 
         # Provide execution context on the Step object (no raw mutation elsewhere)
-        #        Add-PathToDictionary -Dictionary $Step -Path "Config.Signal"     -Value $Signal     | Out-Null
-        #        Add-PathToDictionary -Dictionary $Step -Path "Config.ItemSignal" -Value $ItemSignal | Out-Null
-        #        Add-PathToDictionary -Dictionary $Step -Path "Config.Plan"       -Value $Plan       | Out-Null
+#        Add-PathToDictionary -Dictionary $Step -Path "Config.Signal"     -Value $Signal     | Out-Null
+#        Add-PathToDictionary -Dictionary $Step -Path "Config.ItemSignal" -Value $ItemSignal | Out-Null
+#        Add-PathToDictionary -Dictionary $Step -Path "Config.Plan"       -Value $Plan       | Out-Null
 
         $resultSignal = $null
         try {
@@ -235,7 +236,8 @@ function Invoke-ConductionPhase {
         # Nicely fit the Original Item into the jacket of the target to pass through the conduction phases.
         if ($ItemSignal.HasResult()) {
             $originalItemSignal = $ItemSignal.GetResult()
-            if ($originalItemSignal.HasResult()) {
+            if ($originalItemSignal.HasResult())
+            {
                 # TODO: Review the chain to figure out why/where the result is in the result.
                 $originalItemSignal = $originalItemSignal.GetResult()
             }
@@ -252,40 +254,38 @@ function Invoke-ConductionPhase {
         | Select-Object -Last 1
 
         if ($opSignal.MergeSignalAndVerifyFailure(@($sourceSignal))) {
-            ################ ADDED FOR DEBUGGING, DONT CHECK IN TO MAIN
-            $sourceSignal = Invoke-CondenserAdapter `
-                -Slot "Memory" `
-                -Activity "Generate" `
-                -Signal $Signal.GetControl($true) `
-                -Plan $phaseDict `
-                -ItemSignal $TargetSignal `
-            | Select-Object -Last 1
+            ################ ADDED FOR DEBUYGGING, DONT CHECK IN
+        $sourceSignal = Invoke-CondenserAdapter `
+            -Slot "Memory" `
+            -Activity "Generate" `
+            -Signal $Signal.GetControl($true) `
+            -Plan $phaseDict `
+            -ItemSignal $TargetSignal `
+        | Select-Object -Last 1
             $opSignal.LogCritical("Memory.Generate failed while resolving ConductionPlan.")
             return $opSignal
         }
 
         <##>
         # ---- Steps (ordered) ----
-        $mappingsSignal = Resolve-PathFromDictionary -Dictionary $phaseDict -Path "Mappings" -SignalLevel "Information" | Select-Object -Last 1
+        $stepsSignal = Resolve-PathFromDictionary -Dictionary $phaseDict -Path "Steps" | Select-Object -Last 1
 
-        if ($mappingsSignal.HasResult()) {
-            $mappings = $mappingsSignal.GetResult()
-            $mappingsSorted = $mappings | Sort-Object -Property `
-            @{ Expression = { _Resolve-Order -Dict $_ } },
-            @{ Expression = { _Resolve-String -Dict $_ -Path "Name" } }
+        $steps = $stepsSignal.GetResult()
+        $stepsSorted = $steps | Sort-Object -Property `
+        @{ Expression = { _Resolve-Order -Dict $_ } },
+        @{ Expression = { _Resolve-String -Dict $_ -Path "Name" } }
 
-            foreach ($s in @($mappingsSorted)) {
-                $stepName = Resolve-PathFromDictionary -Dictionary $s -Path "Name"
+        foreach ($s in @($stepsSorted)) {
+            $stepName = Resolve-PathFromDictionary -Dictionary $s -Path "Name"
 
-                $stepSignal = Invoke-ConductionPhase_InvokeStep -Step $s -ItemSignal $ItemSignal -Plan $s -Signal $Signal | Select-Object -Last 1
-                $opSignal.MergeSignal($stepSignal) | Out-Null
+            $stepSignal = Invoke-ConductionPhase_InvokeStep -Step $s -ItemSignal $ItemSignal -Plan $s -Signal $Signal | Select-Object -Last 1
+            $opSignal.MergeSignal($stepSignal) | Out-Null
 
-                if (-not $stepSignal.Success()) {
-                    $success = $false
-                    $ErrorLog += "Step failed: $stepName"
-                    # Optional fail-fast:
-                    # break
-                }
+            if (-not $stepSignal.Success()) {
+                $success = $false
+                $ErrorLog += "Step failed: $stepName"
+                # Optional fail-fast:
+                # break
             }
         }
         #>

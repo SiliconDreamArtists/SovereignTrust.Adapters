@@ -25,31 +25,31 @@ class Conduction_ST {
     [MappedConductionAdapter]$MappedAdapter
     [Signal]$Signal
 
-    Conduction_SDA() {
+    Conduction_ST() {
     }
 
-    Conduction_SDA([MappedConductionAdapter]$mappedAdapter) {
+    Conduction_ST([MappedConductionAdapter]$mappedAdapter) {
         $this.MappedAdapter = $mappedAdapter
     }
 
     [Signal] Construct([object]$dictionary) {
-        $opSignal = [Signal]::Start("Conduction_SDA") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Conduction_ST") | Select-Object -Last 1
 
         try {
             if ($null -eq $dictionary) {
-                return $opSignal.LogCritical("Cannot construct Conduction_SDA — provided dictionary is null.")
+                return $opSignal.LogCritical("Cannot construct Conduction_ST — provided dictionary is null.")
             }
 
-            $this.Signal = [Signal]::Start("Conduction_SDA") | Select-Object -Last 1
+            $this.Signal = [Signal]::Start("Conduction_ST") | Select-Object -Last 1
 
-            $jacket = [Signal]::Start("Conduction_SDA") | Select-Object -Last 1 
+            $jacket = [Signal]::Start("Conduction_ST") | Select-Object -Last 1 
             
             $this.Signal.SetJacket($jacket)
             $jacket.SetResult($dictionary)
-            $opSignal.LogInformation("Conduction_SDA constructed successfully with provided jacket.")
+            $opSignal.LogInformation("Conduction_ST constructed successfully with provided jacket.")
         }
         catch {
-            $opSignal.LogCritical("Error constructing Conduction_SDA: $_")
+            $opSignal.LogCritical("Error constructing Conduction_ST: $_")
         }
 
         return $opSignal

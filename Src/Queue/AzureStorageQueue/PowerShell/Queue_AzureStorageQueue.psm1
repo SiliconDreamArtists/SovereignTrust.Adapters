@@ -94,7 +94,7 @@ class Queue_AzureStorageQueue {
                 $opSignal.LogWarning("StorageQueue Config not found on Plan.Config (no fallback enabled).")
             }
 
-            $resultSignal = $null
+            $resultSignal = $null 
 
             switch ($Activity) {
 
@@ -140,6 +140,8 @@ class Queue_AzureStorageQueue {
                     # TODO: These mappings should be done in a plan to create a new config object to pass on
                     $applicationIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.application_id" | Select-Object -Last 1
                     $channelIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
+                    $channelNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
+                    $channelTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
                     $channelTypeSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.type" | Select-Object -Last 1
                     $interactionIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.id" | Select-Object -Last 1
                     $interactionSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.token" | Select-Object -Last 1
@@ -151,22 +153,108 @@ class Queue_AzureStorageQueue {
                     $interactionToken = $interactionSignal.GetResult()
                     $channelId = $channelIdSignal.GetResult()
                     $channelType = $channelTypeSignal.GetResult()
+
+                    $channelName = $channelNameSignal.GetResult()
+                    $channelTitle = $channelTitleSignal.GetResult()
+
                     $name = $nameSignal.GetResult()
                     $reply = $replySignal.GetResult()
   
 
+                    $userTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.global_name" | Select-Object -Last 1
+                    $userIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.id" | Select-Object -Last 1
+                    $userNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.username" | Select-Object -Last 1
                     # Channel ID Is used to hold a conversation in the message graph
+
+                    # Call the session adapter and request or register session
+
+                    $SessionPlan = [PSCustomObject]@{
+                        Adapter  = "Session.System"
+                        Path     = "*.#.$channelId"
+                        Activity = "RequestOrRegister"
+                    }
+
+                    $SessionItemResult = [PSCustomObject]@{
+                        Id    = $channelId
+                        Name  = $channelName
+                        Title = $channelTitle
+                        User  = [PSCustomObject]@{
+                            Id    = $userIdSignal.GetResult()
+                            Title = $userTitleSignal.GetResult()
+                            Name  = $userNameSignal.GetResult()  
+                        }
+                    }
+
+                    $SessionItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                    $SessionItemSignal.SetJacketResult($SessionItemResult)
+
+                    $sessionResult = Invoke-MappedAdapter -Signal $ConductionSignal -ItemSignal $SessionItemSignal -Plan $SessionPlan -Adapter "Session.System" -Activity "RequestOrRegister" | Select-Object -Last 1
+
                     # Name is the activity to perform and then specific handling for the way it's done
-                    # Open -> run a plan, we'll have default values plugged into the config of the caller of the service and then override with parts Container.Resource.Path, special handling for : as the delimeter in order to support periods in paths converting to slashes
-                    # Direction -> response to a prompt
-                    # Can Open items by running a plan that puts content in memory and then subsequent plans can use that
+                    if ($name) {
+                        switch ($name) {
+                            "direction" {
+                                # Direction -> response to a prompt
+
+
+                                break
+                            }
+
+                            "path" {
+                                # Open -> run a plan using path, we'll have default values plugged into the config of the caller of the service and then override with parts Container.Resource.Path, special handling for : as the delimeter in order to support periods in paths converting to slashes
+                                # Can Open items by running a plan that puts content in memory and then subsequent plans can use that
+                                $BaseConductionPlanMapping = [pscustomobject]@{
+                                    Adapter      = 'Storage.Content'
+                                    Format        = "Json"
+                                    Activity = "Read"
+                                    Key = "Plan"
+                                    HydrationPlan = "@"
+                                    Path = $null
+                                    Container = $null
+                                    Resource = $null
+                                }
+
+                                $pathParts = $reply -split '\.'
+                                $BaseConductionPlanMapping.Container = $pathParts[0]                                        
+                                $BaseConductionPlanMapping.Resource = $pathParts[1] + ".Json"                                        
+                                if ($pathParts.Count -gt 2) {
+                                    $BaseConductionPlanMapping.Path = ($pathParts[2..($pathParts.Count - 1)] -join '.')
+                                }
+                                else {
+                                    $BaseConductionPlanMapping.Path = $null
+                                }
+
+                                $BaseConductionPlanRoute = [PSCustomObject]@{
+                                    Mappings = @($BaseConductionPlanMapping)
+                                }
+
+                                Invoke-MappedAdapter -Adapter "Condenser.Memory" -Activity "Generate" -Plan $BaseConductionPlanRoute -Signal $ConductionSignal -ItemSignal $ItemSignal | Select-Object -Last 1
+                                $PlanSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.$($BaseConductionPlanMapping.Key)" | Select-Object -Last 1
+
+                                Invoke-MappedAdapter -Adapter "Conduction.System" -Activity "Invoke" -Plan $PlanSignal.GetResult($true) -Signal $ConductionSignal -ItemSignal $sessionResult | Select-Object -Last 1
+
+                                # TODO NEXT: Need to put in a plan that loads or reloads a publisher, etc and then add a plan to persist the object
+                                break
+                            }
+
+                            "question" {
+
+                                break
+                            }
+                        }
+                    }
+
+
                     # Each Thread/Channel is a conduction with it's own operating memory, each plan run is essentially a phase inside of that conduction (like a conduction plan that calls another conduction plan is all inside the same conduction plan, all attached to the processid of the session)
                     # This allows for opening a publisher, enrolling a project, the project ad publisher are loaded
                     # Reverse cascading opens opens an item at a level and then loads the prior content into memory, just like the SDA conductions did
                     # This allows multiple users to exist in the same conduction pipeline with different owners
                     # Finish Support for multi-threaded runspaces that share the same conductor for multple users and processes inside the same powershell runtie
-                    # Finish the C# implementation of the system to move that into a service hosted in azure
+
+
+
                     # Move hosting to BDDB.IO instead of done directly through SDA. BDDB.IO can work out hosting deals including charity donations for supporting projects that use sovereign trust using Signalarity.Network domain 
+                    # Finish the C# implementation of the system to move that into a service hosted in azure
 
 
                     
@@ -255,7 +343,7 @@ class Queue_AzureStorageQueue {
 
                     # Transform - Select Path to get Messages as array of strings
                     $transformResultSignal = Invoke-CondenserAdapter -Slot "Transform" -Activity "Select" -Plan $Plan -Signal $ConductionSignal -ItemSignal $responseJacketSignal | Select-Object -Last 1
-                    if ($opSignal.MergeSignalAndVerifyFailure($transformResultSignal)) { return $opSignal }
+                    if ($opSignal.MergeSignalAndVerifyFailure($transformResultSignal) -or (-not $transformResultSignal.HasResult())) { return $opSignal }
                     $responseJacketSignal.SetJacket($transformResultSignal)
 
                     $result = @($responseJacketSignal.GetJacket().GetResult($true) ?? [PSCustomObject]@{})

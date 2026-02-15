@@ -22,35 +22,35 @@ if (-not (Get-Module -Name $stModuleName)) {
 # . "$PSScriptRoot/Update-StorageNetworkVisibilityApi.ps1"
 # . "$PSScriptRoot/Write-StorageNetworkApi.ps1"
 
-class Network_AzureApplicationInsights {
+class Network_DiscordBot {
     [MappedNetworkAdapter]$MappedAdapter
     [Signal]$Signal
 
-    Network_AzureApplicationInsights() { }
+    Network_DiscordBot() { }
 
-    Network_AzureApplicationInsights([MappedNetworkAdapter]$mappedAdapter) {
+    Network_DiscordBot([MappedNetworkAdapter]$mappedAdapter) {
         $this.MappedAdapter = $mappedAdapter
     }
 
     [Signal] Construct([object]$dictionary) {
-        $opSignal = [Signal]::Start("Network_AzureApplicationInsights.Construct") | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Network_DiscordBot.Construct") | Select-Object -Last 1
 
         try {
             if ($null -eq $dictionary) {
-                $opSignal.LogCritical("Cannot construct Network_AzureApplicationInsights — provided dictionary is null.")
+                $opSignal.LogCritical("Cannot construct Network_DiscordBot — provided dictionary is null.")
                 return $opSignal
             }
 
-            $this.Signal = [Signal]::Start("Network_AzureApplicationInsights") | Select-Object -Last 1
+            $this.Signal = [Signal]::Start("Network_DiscordBot") | Select-Object -Last 1
 
-            $jacket = [Signal]::Start("Network_AzureApplicationInsights.Jacket") | Select-Object -Last 1
+            $jacket = [Signal]::Start("Network_DiscordBot.Jacket") | Select-Object -Last 1
             $jacket.SetResult($dictionary)
 
             $this.Signal.SetJacket($jacket)
-            $opSignal.LogInformation("Network_AzureApplicationInsights constructed successfully with provided jacket.")
+            $opSignal.LogInformation("Network_DiscordBot constructed successfully with provided jacket.")
         }
         catch {
-            $opSignal.LogCritical("Error constructing Network_AzureApplicationInsights: $_")
+            $opSignal.LogCritical("Error constructing Network_DiscordBot: $_")
         }
 
         return $opSignal
@@ -67,16 +67,16 @@ class Network_AzureApplicationInsights {
         [object]$Plan,
         [Signal]$ItemSignal
     ) {
-        $opSignal = [Signal]::Start("Network_AzureApplicationInsights.Invoke:$Slot.$Activity", $ConductionSignal) | Select-Object -Last 1
+        $opSignal = [Signal]::Start("Network_DiscordBot.Invoke:$Slot.$Activity", $ConductionSignal) | Select-Object -Last 1
 
         try {
             if (-not $ConductionSignal) {
-                $opSignal.LogCritical("Null ConductionSignal passed to Network_AzureApplicationInsights.Invoke()")
+                $opSignal.LogCritical("Null ConductionSignal passed to Network_DiscordBot.Invoke()")
                 return $opSignal
             }
 
             if (-not $Activity) {
-                $opSignal.LogWarning("No Activity provided to Network_AzureApplicationInsights.Invoke()")
+                $opSignal.LogWarning("No Activity provided to Network_DiscordBot.Invoke()")
                 return $opSignal
             }
 
@@ -127,7 +127,7 @@ class Network_AzureApplicationInsights {
                         Key = $PlanTokenSignal.GetResult()
                     }
 
-                    $planLookupSignal = [Signal]::Start("Network_AzureApplicationInsights.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                    $planLookupSignal = [Signal]::Start("Network_DiscordBot.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
                     $planLookupSignal.SetResult($PlanTokenSignal.GetResult());
                     $cachedPlanSignal = Invoke-CondenserAdapter -Slot "Token" -Signal $ConductionSignal -ItemSignal $PlanTokenSignal -Activity "Parse" -Plan $TokenPlan | Select-Object -Last 1
                     if ($opSignal.MergeSignalAndVerifyFailure($cachedPlanSignal)) {return $opSignal}
@@ -190,16 +190,16 @@ class Network_AzureApplicationInsights {
 
         }
         catch {
-            $opSignal.LogCritical("🔥 Exception in Network_AzureApplicationInsights.Invoke: $($_.Exception.Message)", $null, $_)
+            $opSignal.LogCritical("🔥 Exception in Network_DiscordBot.Invoke: $($_.Exception.Message)", $null, $_)
         }
 
         return $opSignal
     }
 }
 
-function Resolve-Network_AzureApplicationInsights {
-    $object = [Network_AzureApplicationInsights]::new()
+function Resolve-Network_DiscordBot {
+    $object = [Network_DiscordBot]::new()
     return $object
 }
 
-Export-ModuleMember -Function Resolve-Network_AzureApplicationInsights
+Export-ModuleMember -Function Resolve-Network_DiscordBot
