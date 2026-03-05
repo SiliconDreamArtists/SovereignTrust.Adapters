@@ -32,6 +32,7 @@ class Network_DiscordBot {
         $this.MappedAdapter = $mappedAdapter
     }
 
+
     [Signal] Construct([object]$dictionary) {
         $opSignal = [Signal]::Start("Network_DiscordBot.Construct") | Select-Object -Last 1
 
@@ -92,82 +93,126 @@ class Network_DiscordBot {
                 $opSignal.LogWarning("StorageNetwork Config not found on Plan.Config (no fallback enabled).")
             }
 
-            $resultSignal = $null
+            $discordTokenSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
+            $uriSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
+            $headers = @{
+            }
+
+            $headers["Authorization"] = "Bot $($discordTokenSignal.GetResult())"
+            $headers["User-Agent"] = "DiscordBot (https://sda.studio, 1.0) PowerShell/7"
 
             switch ($Activity) {
-                # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
-                "EmitSignalFull" {
-
-                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
-                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
-
-#                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
-                    foreach ($entry in $ItemSignal.Entries)
-                    {
-                        $entry.AddTag("Skip")
-                    }
-#>
-#                    $ItemSignal.AddTag("Skip")
-
-<#
-                    foreach ($entry in $EmitSignal.Entries)
-                    {
-                        $entry.AddTag("Skip")
-                    }
-#>
-                    break
-                }
-                { $_ -in @("EmitEntries", "EmitSignal") } {
-                    # The App Insights Network Adapter prepares a custom plan to pass to its body. 
-                    # Use the plan to run a conduction that will grab the plan from the cache and run it passing through the signal in ItemSignal which will generate the content and send it to App Insights       
-
-                    $PlanTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.PlanTokens.$($Activity)" | Select-Object -Last 1
-
-                    $TokenPlan = [PSCustomObject]@{
-                        Key = $PlanTokenSignal.GetResult()
-                    }
-
-                    $planLookupSignal = [Signal]::Start("Network_DiscordBot.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
-                    $planLookupSignal.SetResult($PlanTokenSignal.GetResult());
-                    $cachedPlanSignal = Invoke-CondenserAdapter -Slot "Token" -Signal $ConductionSignal -ItemSignal $PlanTokenSignal -Activity "Parse" -Plan $TokenPlan | Select-Object -Last 1
-                    if ($opSignal.MergeSignalAndVerifyFailure($cachedPlanSignal)) {return $opSignal}
-
-                    $clonedCachePlan = $cachedPlanSignal.GetResult() | ConvertTo-Json -Depth 10 | ConvertFrom-Json -Depth 10
-                    $conductionSignal = Invoke-CondenserAdapter -Slot "Conduction" -Signal $ConductionSignal -ItemSignal $ItemSignal -Activity "ST" -Plan $clonedCachePlan | Select-Object -Last 1
-                    if ($opSignal.MergeSignalAndVerifyFailure($conductionSignal)) {return $opSignal}
-                    
-                    break
-                }
                 "SendMessage" {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
-                     $bodyPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Path" | Select-Object -Last 1
+                    $sourceContentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1
+                    $channelIdSignal= Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
 
-                    $ContentPlan = [PSCustomObject]@{
-                        Path = $bodyPathSignal.GetResult()
-#                                HydrationPlan = "@"
+                    $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages"
+
+                    $content = @{
+                        content = $sourceContentSignal.GetResult()
                     }
 
-                    $SourceContentResultSignal = Invoke-MappedAdapter -Adapter "Token.Memory"  -Activity "Get" -Plan $ContentPlan -ItemSignal $ItemSignal -Signal $ConductionSignal | Select-Object -Last 1
-
-                    $uriSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
-#                    $resourceSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
-                    
                     $RestPlan = [PSCustomObject]@{
                         Config = [PSCustomObject]@{
-                            Body = $SourceContentResultSignal.GetResult()
+                            Body = ($content | ConvertTo-Json)
                             Method = "Post"
+                            Headers = $headers
                             SkipBearerToken = $true
-                            Uri = $uriSignal.GetResult()
+                            Uri = $uri
                         }
                     }
 
                     # Call Rest Endpoint
                     $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "Post" -Signal $ConductionSignal -Plan $RestPlan -ItemSignal $ItemSignal
                     if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) { return $opSignal }
-                    #$responseJacketSignal.SetJacket($responseSignal)
-
                     $opSignal.SetResult($responseSignal.GetResult())
-                    break   
+                    break
+                }
+
+                "ReadBatch" {
+                    $PollUntilResponseSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.PollUntilResponse" -Default $false | Select-Object -Last 1
+                    $PollingDelayMSSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.PollingDelayMS" -Default 5000 | Select-Object -Last 1
+                    $MessageLimitSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MessageLimit" -Default 10 | Select-Object -Last 1
+                    $MessageReplyPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Path" -SignalLevel "Information" | Select-Object -Last 1
+
+                    $PollUntilResponse = $PollUntilResponseSignal.GetResult()
+                    $channelIdSignal= Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
+                    $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages?limit=$($MessageLimitSignal.GetResult())"
+                    $continue = $true
+
+                    while ($continue) {
+                        $RestPlan = [PSCustomObject]@{
+                            Config = [PSCustomObject]@{
+                                Method = "Get"
+                                Headers = $headers
+                                SkipBearerToken = $true
+                                Uri = $uri
+                            }
+                        }
+
+                        # Call Rest Endpoint
+                        $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "Post" -Signal $ConductionSignal -Plan $RestPlan -ItemSignal $ItemSignal
+                        if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) { return $opSignal }
+
+                        $continue = $PollUntilResponse
+                        # Get the Message Id from the previous step when there's a id to lookup from a previous message.
+                        if ($MessageReplyPathSignal.HasResult())
+                        {
+                            $messageIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $MessageReplyPathSignal.GetResult() | Select-Object -Last 1
+                            $messageId = $messageIdSignal.GetResult()
+                            $messageList = $responseSignal.GetResult()
+                            foreach ($message in $messageList) {
+                                $replyMessageIdSignal = Resolve-PathFromDictionary -Dictionary $message -Path "message_reference.message_id" -SignalLevel "Information" | Select-Object -Last 1
+                                if ($replyMessageIdSignal.HasResult()) {
+                                    if ($replyMessageIdSignal.GetResult() -eq $messageId){
+                                        # Set opSignal Result to Message for processing.
+                                        #$opSignal.SetResult(($message | ConvertTo-Json -Depth 10))
+                                        $continue = $false
+                                        $opSignal.SetResult($message)
+                                        return $opSignal
+                                    }
+                                }
+                            }
+
+                        }
+
+                        if ($continue){
+                            Start-Sleep -Milliseconds $PollingDelayMSSignal.GetResult()
+                        }
+
+                        $opSignal.SetResult($responseSignal.GetResult())
+                    }
+
+                    break
+                }
+
+                "HandleMessage" {
+                    # TODO: Review, this is being done in this class, but it's generic enough it should be somewhere else.
+#                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Message" | Select-Object -Last 1
+                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $Plan.Path | Select-Object -Last 1
+                    if ($MessageSignal.HasResult()) {
+
+                        $opSignal.SetResult($MessageSignal.GetResult())
+
+#                        $Message = $MessageSignal.GetResult()
+#                        if ($Message -is [string])
+#                        {
+#                            $Message = $Message | ConvertFrom-Json -Depth 10
+#                        }
+
+#                        $content = $Message.content
+
+#                        $null = Add-PathToDictionary -Dictionary $ItemSignal -Path $Plan.Path -Value $content
+
+#                        $opSignal.SetResult($content)
+#                        $SourceContentSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Content.@" | Select-Object -Last 1
+#                        $SourceContent = $SourceContentSignal.GetResult() 
+#                        $null = Add-PathToDictionary -Dictionary $SourceContent -Path "Meta.Description" -Value $content
+
+#                        $opSignal.SetResult(($SourceContent | ConvertTo-Json -Depth 100))
+                    }
+                  break   
                 }
 
 
@@ -177,17 +222,6 @@ class Network_DiscordBot {
                     break
                 }
             }
-
-            if ($resultSignal) {
-                $opSignal.MergeSignal($resultSignal)
-                if ($resultSignal.Success()) {
-                    $opSignal.SetResult($resultSignal.GetResult($true))
-                    $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
-                } else {
-                    $opSignal.LogWarning("$Slot.$Activity did not succeed.")
-                }
-            }
-
         }
         catch {
             $opSignal.LogCritical("🔥 Exception in Network_DiscordBot.Invoke: $($_.Exception.Message)", $null, $_)

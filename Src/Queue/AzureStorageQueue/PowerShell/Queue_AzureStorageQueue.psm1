@@ -56,6 +56,51 @@ class Queue_AzureStorageQueue {
         return $opSignal
     }
 
+
+    [object] ConvertKvpBlockToObject([string]$KvpBlock) {
+
+        # "Name=Plan, Type=Json" -> "Name=Plan`nType=Json" -> hashtable
+        $stringData = (($KvpBlock -split '\s*,\s*') -join "`n") -replace '\s*=\s*', '='
+        $ht = $stringData | ConvertFrom-StringData
+
+        # optional: strip surrounding quotes on values
+        foreach ($k in @($ht.Keys)) {
+            $v = [string]$ht[$k]
+            if (
+                ($v.StartsWith('"') -and $v.EndsWith('"')) -or
+                ($v.StartsWith("'") -and $v.EndsWith("'"))
+            ) {
+                $ht[$k] = $v.Substring(1, $v.Length - 2)
+            }
+        }
+
+        # your requirement: make JSON then ConvertFrom-Json
+        return ($ht | ConvertTo-Json -Compress) | ConvertFrom-Json
+    }
+
+    [pscustomobject] ParsePathWithOptionalFilter([string]$Path) {
+
+        $clean = @()
+        $filters = @()
+
+        foreach ($seg in ($Path -split '\.')) {
+
+            $s = $seg.Trim()
+
+            if ($s -match '^(?<name>[^\[\]]+)\[(?<kvp>[^\]]*)\]$') {
+                $clean += $matches.name.Trim()
+                $filters += $this.ConvertKvpBlockToObject($matches.kvp)
+            }
+            else {
+                $clean += $s
+            }
+        }
+
+        return [pscustomobject]@{
+            Path    = ($clean -join '.')
+            Filters = $filters
+        }
+    }    
     # ---------------------------------------------------------------------
     # Universal Invoke entry 
     # Activity uses canonical verb set: ReadBatch, PeekBatch, AckItem, DeferItem, WriteItem
@@ -104,6 +149,7 @@ class Queue_AzureStorageQueue {
 
                 "PeekBatch" {
                     return $this.Invoke($Slot, "ReadBatch", $ConductionSignal, $Plan, $ItemSignal)
+                    break
                 }
 
                 "HandleMessage" {
@@ -215,21 +261,45 @@ class Queue_AzureStorageQueue {
                                 }
 
                                 $pathParts = $reply -split '\.'
-                                $BaseConductionPlanMapping.Container = $pathParts[0]                                        
-                                $BaseConductionPlanMapping.Resource = $pathParts[1] + ".Json"                                        
+                                $BaseConductionPlanMapping.Container = $pathParts[0]                                
+                                $BaseConductionPlanMapping.Resource = $pathParts[1] + ".Json"
+                                $ItemValue = $null
+
                                 if ($pathParts.Count -gt 2) {
-                                    $BaseConductionPlanMapping.Path = ($pathParts[2..($pathParts.Count - 1)] -join '.')
+
+                                    $rawPath = ($pathParts[2..($pathParts.Count - 1)] -join '.')
+
+                                    #$rawPath = "EnrollMe[Name=ABC,Fun=Xyz is great,NNN=a b c]"
+                                    $parsed  = $this.ParsePathWithOptionalFilter($rawPath)
+
+                                    $BaseConductionPlanMapping.Path = $parsed.Path
+                                    if ($parsed.Filters.Count -gt 0) {
+                                        $ItemValue  = $parsed.Filters[0]
+                                    }
                                 }
                                 else {
                                     $BaseConductionPlanMapping.Path = $null
                                 }
 
                                 $BaseConductionPlanRoute = [PSCustomObject]@{
-                                    Mappings = @($BaseConductionPlanMapping)
+                                    Steps = @($BaseConductionPlanMapping)
                                 }
 
-                                Invoke-MappedAdapter -Adapter "Condenser.Memory" -Activity "Generate" -Plan $BaseConductionPlanRoute -Signal $ConductionSignal -ItemSignal $ItemSignal | Select-Object -Last 1
-                                $PlanSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.$($BaseConductionPlanMapping.Key)" | Select-Object -Last 1
+                                $SentItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                                $SentItemSignal.SetJacketResult($ItemValue)
+
+                                if ($ItemValue)
+                                {
+                                    $null = Add-PathToDictionary -Dictionary $SentItemSignal -Path "*.#.Data" -Value $ItemValue
+                                }
+
+                                if ($sessionResult)
+                                {
+                                    $null = Add-PathToDictionary -Dictionary $SentItemSignal -Path "*.#.Session" -Value $sessionResult
+                                }
+
+                                $xyz = Invoke-MappedAdapter -Adapter "Condenser.Memory" -Activity "Generate" -Plan $BaseConductionPlanRoute -Signal $ConductionSignal -ItemSignal $SentItemSignal | Select-Object -Last 1
+                                $PlanSignal = Resolve-PathFromDictionary -Dictionary $SentItemSignal -Path "*.#.$($BaseConductionPlanMapping.Key)" | Select-Object -Last 1
 
                                 Invoke-MappedAdapter -Adapter "Conduction.System" -Activity "Invoke" -Plan $PlanSignal.GetResult($true) -Signal $ConductionSignal -ItemSignal $sessionResult | Select-Object -Last 1
 
@@ -272,18 +342,6 @@ class Queue_AzureStorageQueue {
                         $a = $_
                     }
                     #>
-
-                    # Response Message to Discord
-                    $uri = "https://discord.com/api/v10/webhooks/$applicationId/$interactionToken"
-                    $body = @{
-                        content = "this is my message: $($name): '$reply'"
-                    } | ConvertTo-Json -Depth 5
-                    try {
-                        Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body $body
-                    }
-                    catch {
-                        $a = $_
-                    }
                     
                     # Now delete Item
                     $deleteResultSignal = $this.Invoke($Slot, "AckItem", $ConductionSignal, $Plan, $ItemSignal)
@@ -316,7 +374,7 @@ class Queue_AzureStorageQueue {
                         "?peekonly=true&numofmessages=$peekDepth"
                     }
 
-                    $clonePlan = $Plan | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+                    $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
                     Add-PathToDictionary -Dictionary $clonePlan -Path "QueryString" -Value $querystring
 
                     $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
@@ -376,7 +434,7 @@ class Queue_AzureStorageQueue {
                     $querystring = "/{0}?popreceipt={1}" -f $MessageId, [Uri]::EscapeDataString($PopReceipt)
 
                     try {
-                        $clonePlan = $Plan | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+                        $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
                         Add-PathToDictionary -Dictionary $clonePlan -Path "Config.QueryString" -Value $querystring
 
                         $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" -Default 1 | Select-Object -Last 1

@@ -94,6 +94,8 @@ function Invoke-Conduction_ST {
 
                 foreach ($dependsOnItemSignal in $items) {
                         $dependsOnItemSignal = Resolve-PathFromDictionary -Dictionary $dependsOnItemSignal -Path "%.@.Name" | Select-Object -Last 1
+                        $null = Add-PathToDictionary -Dictionary $dependsOnItemSignal -Path "@.Plan" -Value $Plan
+
                         Invoke-ProcessPhaseSetDependsOn -conductionSignal $conductionSignal -opSignal $opSignal -phasesSignal $phasesSignal -gridResultSignal $gridResultSignal -ItemSignal $ItemSignal -Plan $Plan -DependsOn $dependsOnItemSignal.GetResult()
                     }
                 }

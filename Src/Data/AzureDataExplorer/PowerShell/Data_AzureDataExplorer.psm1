@@ -133,7 +133,7 @@ class Data_AzureDataExplorer {
                                 $_ | ConvertTo-Json -Depth 100 -Compress
                             }) -join "`n"
 
-                    $clonePlan = $Plan | ConvertTo-Json | ConvertFrom-Json
+                    $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
                     $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
                     $HostAddress = $HostSignal.GetResult()
 
@@ -171,7 +171,7 @@ class Data_AzureDataExplorer {
                     $querystring = "/{0}?popreceipt={1}" -f $MessageId, [Uri]::EscapeDataString($PopReceipt)
 
                     try {
-                        $clonePlan = $Plan | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
+                        $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
                         Add-PathToDictionary -Dictionary $clonePlan -Path "QueryString" -Value $querystring
 
                         $HostSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" -Default 1 | Select-Object -Last 1

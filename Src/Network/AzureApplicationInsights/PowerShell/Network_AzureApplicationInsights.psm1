@@ -98,8 +98,8 @@ class Network_AzureApplicationInsights {
                 # Review pattern, this is too specific to telemetry or could it be the same for signalr, etc?
                 "EmitSignalFull" {
 
-                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
-                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
+#                    $this.Invoke($Slot, "EmitEntries", $ConductionSignal, $Plan, $ItemSignal)
+#                    $this.Invoke($Slot, "EmitSignal", $ConductionSignal, $Plan, $ItemSignal)
 
 #                    $entriesSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Entries.@" | Select-Object -Last 1
                     foreach ($entry in $ItemSignal.Entries)
@@ -120,7 +120,7 @@ class Network_AzureApplicationInsights {
                 { $_ -in @("EmitEntries", "EmitSignal") } {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
                     # Use the plan to run a conduction that will grab the plan from the cache and run it passing through the signal in ItemSignal which will generate the content and send it to App Insights       
-
+# PlanTokens provide routes to plans held in conductor cache (or elsewhere, example: "EmitEntries":"Memory.Cache.TelemetryPlans.Telemetry.EmitEntries")
                     $PlanTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.PlanTokens.$($Activity)" | Select-Object -Last 1
 
                     $TokenPlan = [PSCustomObject]@{

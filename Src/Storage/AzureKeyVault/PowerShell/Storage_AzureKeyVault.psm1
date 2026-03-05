@@ -112,7 +112,7 @@ class Storage_AzureKeyVault {
                     $hostUriSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses.0" | Select-Object -Last 1
                     $uri = "$($hostUriSignal.GetResult())secrets/$Secret"#/$applicationId/$interactionToken"
 
-                    $clonePlan = $Plan | ConvertTo-Json | ConvertFrom-Json
+                    $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
 
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value $uri
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Method" -Value "Get"
