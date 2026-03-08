@@ -192,25 +192,7 @@ class Network_DiscordBot {
 #                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Message" | Select-Object -Last 1
                     $MessageSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $Plan.Path | Select-Object -Last 1
                     if ($MessageSignal.HasResult()) {
-
                         $opSignal.SetResult($MessageSignal.GetResult())
-
-#                        $Message = $MessageSignal.GetResult()
-#                        if ($Message -is [string])
-#                        {
-#                            $Message = $Message | ConvertFrom-Json -Depth 10
-#                        }
-
-#                        $content = $Message.content
-
-#                        $null = Add-PathToDictionary -Dictionary $ItemSignal -Path $Plan.Path -Value $content
-
-#                        $opSignal.SetResult($content)
-#                        $SourceContentSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "*.#.Content.@" | Select-Object -Last 1
-#                        $SourceContent = $SourceContentSignal.GetResult() 
-#                        $null = Add-PathToDictionary -Dictionary $SourceContent -Path "Meta.Description" -Value $content
-
-#                        $opSignal.SetResult(($SourceContent | ConvertTo-Json -Depth 100))
                     }
                   break   
                 }

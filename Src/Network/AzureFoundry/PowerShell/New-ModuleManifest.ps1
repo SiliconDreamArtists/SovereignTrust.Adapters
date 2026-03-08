@@ -1,0 +1,21 @@
+$root = "$PSScriptRoot"
+if ($root -ne (Get-Location).Path) {
+    Set-Location $root
+}
+
+New-ModuleManifest -Path ./Network_AzureFoundry.psd1 `
+  -RootModule 'Network_AzureFoundry.psm1' `
+  -ModuleVersion '1.0.0' `
+  -Author 'Silicon Dream Artists' `
+  -CompanyName 'Silicon Dream Artists' `
+  -Description 'Native PowerShell implementation for the Azure Key Vault Storage Adapter.' `
+  -Tags "'Network_AzureFoundry' 'SovereignTrust.Adapters' 'SovereignTrust' 'Adapters' 'Public' 'Azure' 'SDA' 'BDDB'" `
+  -LicenseUri 'https://opensource.org/licenses/MIT' `
+  -ProjectUri 'https://github.com/SiliconDreamArtists/SovereignTrust.Adapters' `
+  -CompatiblePSEditions 'Core' `
+  -PowerShellVersion '5.1'
+
+  Invoke-GenerateModuleFile -OutputFile 'Network_AzureFoundry.psm1' -Root $PSScriptRoot
+  
+
+  
