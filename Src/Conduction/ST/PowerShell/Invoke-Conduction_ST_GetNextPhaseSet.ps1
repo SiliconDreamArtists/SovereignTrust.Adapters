@@ -37,7 +37,7 @@ function Invoke-Conduction_ST_GetNextPhaseSet {
             $phase = $phaseItem
             if ($phaseItem -is [System.Collections.IDictionary] -and $phaseItem.Keys.Count -eq 1) {
                 $onlyKey = @($phaseItem.Keys)[0]
-                $phase   = $phaseItem[$onlyKey]
+                $phase = $phaseItem[$onlyKey]
             }
 
             # Resolve Name
@@ -78,7 +78,8 @@ function Invoke-Conduction_ST_GetNextPhaseSet {
             $isMatch = $false
             if ([string]::IsNullOrWhiteSpace($dependsOnName)) {
                 if (-not $deps.Count -or ($deps -contains "*")) { $isMatch = $true }
-            } else {
+            }
+            else {
                 if (($deps -contains $dependsOnName) -or ($deps -contains "*")) { $isMatch = $true }
             }
 
@@ -92,16 +93,15 @@ function Invoke-Conduction_ST_GetNextPhaseSet {
         }
 
         $nextNames =
-            $matches |
-            Sort-Object -Property Order, Name |
-            Select-Object -ExpandProperty Phase
+        $matches |
+        Sort-Object -Property Order, Name |
+        Select-Object -ExpandProperty Phase
 
-            $nextPhasesSignals = @()
-        foreach ($nextItem in $nextNames)
-        {
+        $nextPhasesSignals = @()
+        foreach ($nextItem in $nextNames) {
             $nextName = $nextItem.Name
-           $nextPhaseSignal = Resolve-PathFromDictionary -Dictionary $PhasesGridSignal -Path "@.@.#.$nextName" | Select-Object -Last 1
-           $nextPhasesSignals += $nextPhaseSignal.GetResult()
+            $nextPhaseSignal = Resolve-PathFromDictionary -Dictionary $PhasesGridSignal -Path "@.@.#.$nextName" | Select-Object -Last 1
+            $nextPhasesSignals += $nextPhaseSignal.GetResult()
         }
 
         $opSignal.SetResult(@($nextPhasesSignals)) | Out-Null

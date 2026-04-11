@@ -14,14 +14,6 @@ if (-not (Get-Module -Name $stModuleName)) {
     Import-Module (Resolve-Path $stPath).ProviderPath -Force
 }
 
-# ---- Load Network functions (your existing REST surface) ----
-# Use your existing implementations here
-# . "$PSScriptRoot/Read-StorageNetworkApi.ps1"
-# Optional if you have them:
-# . "$PSScriptRoot/Delete-StorageNetworkMessageApi.ps1"
-# . "$PSScriptRoot/Update-StorageNetworkVisibilityApi.ps1"
-# . "$PSScriptRoot/Write-StorageNetworkApi.ps1"
-
 class Network_AzureFoundry {
     [MappedNetworkAdapter]$MappedAdapter
     [Signal]$Signal
@@ -56,10 +48,6 @@ class Network_AzureFoundry {
         return $opSignal
     }
 
-    # ---------------------------------------------------------------------
-    # Universal Invoke entry 
-    # Activity uses canonical verb set: ReadBatch, PeekBatch, AckItem, DeferItem, WriteItem
-    # ---------------------------------------------------------------------
     [Signal] Invoke(
         [string]$Slot,
         [string]$Activity,
@@ -139,8 +127,6 @@ class Network_AzureFoundry {
                 }
 
                 "HandleMessage" {
-                    # TODO: Review, this is being done in this class, but it's generic enough it should be somewhere else.
-#                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Message" | Select-Object -Last 1
                     $MessageSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $Plan.Path | Select-Object -Last 1
                     if ($MessageSignal.HasResult()) {
                         $opSignal.SetResult($MessageSignal.GetResult())
