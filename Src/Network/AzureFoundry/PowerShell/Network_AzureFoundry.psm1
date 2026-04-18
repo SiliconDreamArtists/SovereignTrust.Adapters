@@ -120,7 +120,7 @@ class Network_AzureFoundry {
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Body" -Value $body
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Headers" -Value $headers
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value "$HostAddress"
-                    
+                    $message = $contentSignal.GetResult()
                     $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "POST" -Signal $ConductionSignal -Plan $clonePlan -ItemSignal $ItemSignal
                     $opSignal.SetResult($responseSignal.GetResult())
                     break   
@@ -128,6 +128,20 @@ class Network_AzureFoundry {
 
                 "HandleMessage" {
                     $MessageSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $Plan.Path | Select-Object -Last 1
+
+                    # TODO: Review if we should keep format inside of the Memory Condenser
+                    $FormatSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Format" -SignalLevel "Warning" | Select-Object -Last 1
+                    $Format = $FormatSignal.HasResult()    ? $FormatSignal.GetResult()    : $null
+                    if ($Format) {
+                        $FormatSignal = [Signal]::Start("MemoryCondenser.Invoke.Format", $ItemSignal) | Select-Object -Last 1
+                        $FormatSignal.SetJacket($MessageSignal)
+                        $FormatSignal.SetPointer($ItemSignal.GetPointer())
+
+                        $StepResultSignal = Invoke-CondenserAdapter -Slot "Format" -Activity $Format -Plan $Plan -Signal $ConductionSignal -ItemSignal $FormatSignal | Select-Object -Last 1
+                        if ($opSignal.MergeSignalAndVerifyFailure($StepResultSignal)) { return $opSignal }
+                        $MessageSignal.SetResult($StepResultSignal.GetResult())
+                    }
+
                     if ($MessageSignal.HasResult()) {
                         $opSignal.SetResult($MessageSignal.GetResult())
                     }

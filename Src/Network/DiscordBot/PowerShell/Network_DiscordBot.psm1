@@ -93,8 +93,8 @@ class Network_DiscordBot {
                 $opSignal.LogWarning("StorageNetwork Config not found on Plan.Config (no fallback enabled).")
             }
 
-            $discordTokenSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
-            $uriSignal= Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
+            $discordTokenSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Resource" | Select-Object -Last 1
+            $uriSignal = Resolve-PathFromDictionary -Dictionary $this.Signal -Path "%.@.Addresses" | Select-Object -Last 1
             $headers = @{
             }
 
@@ -105,7 +105,7 @@ class Network_DiscordBot {
                 "SendMessage" {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
                     $sourceContentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1
-                    $channelIdSignal= Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
+                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
 
                     $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages"
 
@@ -115,11 +115,11 @@ class Network_DiscordBot {
 
                     $RestPlan = [PSCustomObject]@{
                         Config = [PSCustomObject]@{
-                            Body = ($content | ConvertTo-Json)
-                            Method = "Post"
-                            Headers = $headers
+                            Body            = ($content | ConvertTo-Json)
+                            Method          = "Post"
+                            Headers         = $headers
                             SkipBearerToken = $true
-                            Uri = $uri
+                            Uri             = $uri
                         }
                     }
 
@@ -137,17 +137,17 @@ class Network_DiscordBot {
                     $MessageReplyPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Path" -SignalLevel "Information" | Select-Object -Last 1
 
                     $PollUntilResponse = $PollUntilResponseSignal.GetResult()
-                    $channelIdSignal= Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
+                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
                     $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages?limit=$($MessageLimitSignal.GetResult())"
                     $continue = $true
 
                     while ($continue) {
                         $RestPlan = [PSCustomObject]@{
                             Config = [PSCustomObject]@{
-                                Method = "Get"
-                                Headers = $headers
+                                Method          = "Get"
+                                Headers         = $headers
                                 SkipBearerToken = $true
-                                Uri = $uri
+                                Uri             = $uri
                             }
                         }
 
@@ -157,15 +157,14 @@ class Network_DiscordBot {
 
                         $continue = $PollUntilResponse
                         # Get the Message Id from the previous step when there's a id to lookup from a previous message.
-                        if ($MessageReplyPathSignal.HasResult())
-                        {
+                        if ($MessageReplyPathSignal.HasResult()) {
                             $messageIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $MessageReplyPathSignal.GetResult() | Select-Object -Last 1
                             $messageId = $messageIdSignal.GetResult()
                             $messageList = $responseSignal.GetResult()
                             foreach ($message in $messageList) {
                                 $replyMessageIdSignal = Resolve-PathFromDictionary -Dictionary $message -Path "message_reference.message_id" -SignalLevel "Information" | Select-Object -Last 1
                                 if ($replyMessageIdSignal.HasResult()) {
-                                    if ($replyMessageIdSignal.GetResult() -eq $messageId){
+                                    if ($replyMessageIdSignal.GetResult() -eq $messageId) {
                                         # Set opSignal Result to Message for processing.
                                         #$opSignal.SetResult(($message | ConvertTo-Json -Depth 10))
                                         $continue = $false
@@ -177,7 +176,7 @@ class Network_DiscordBot {
 
                         }
 
-                        if ($continue){
+                        if ($continue) {
                             Start-Sleep -Milliseconds $PollingDelayMSSignal.GetResult()
                         }
 
@@ -189,12 +188,13 @@ class Network_DiscordBot {
 
                 "HandleMessage" {
                     # TODO: Review, this is being done in this class, but it's generic enough it should be somewhere else.
-#                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Message" | Select-Object -Last 1
+                    #                    $MessageSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Message" | Select-Object -Last 1
                     $MessageSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $Plan.Path | Select-Object -Last 1
+                    
                     if ($MessageSignal.HasResult()) {
                         $opSignal.SetResult($MessageSignal.GetResult())
                     }
-                  break   
+                    break   
                 }
 
 
