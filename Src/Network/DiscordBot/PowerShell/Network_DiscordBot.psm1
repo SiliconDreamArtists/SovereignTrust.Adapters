@@ -57,6 +57,32 @@ class Network_DiscordBot {
         return $opSignal
     }
 
+    [string[]] SplitContent([string]$Content, [int]$MaxLength) {
+        if ([string]::IsNullOrEmpty($Content)) {
+            return @("")
+        }
+
+        if ($MaxLength -le 0) {
+            throw "MaxLength must be greater than 0."
+        }
+
+        $chunks = New-Object System.Collections.Generic.List[string]
+        $index = 0
+
+        while ($index -lt $Content.Length) {
+            $remaining = $Content.Length - $index
+            $length = [Math]::Min($MaxLength, $remaining)
+
+            $chunk = $Content.Substring($index, $length)
+            $chunks.Add($chunk)
+
+            $index += $length
+        }
+
+        return $chunks.ToArray()
+    }
+
+
     # ---------------------------------------------------------------------
     # Universal Invoke entry 
     # Activity uses canonical verb set: ReadBatch, PeekBatch, AckItem, DeferItem, WriteItem
@@ -109,24 +135,44 @@ class Network_DiscordBot {
 
                     $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages"
 
-                    $content = @{
-                        content = $sourceContentSignal.GetResult()
-                    }
+                    $contentText = [string]$sourceContentSignal.GetResult()
+                    $contentChunks = $this.SplitContent($contentText, 2000)
 
-                    $RestPlan = [PSCustomObject]@{
-                        Config = [PSCustomObject]@{
-                            Body            = ($content | ConvertTo-Json)
-                            Method          = "Post"
-                            Headers         = $headers
-                            SkipBearerToken = $true
-                            Uri             = $uri
+                    $responseResults = @()
+
+                    foreach ($contentChunk in $contentChunks) {
+
+                        $content = @{
+                            content = $contentChunk
                         }
+
+                        $RestPlan = [PSCustomObject]@{
+                            Config = [PSCustomObject]@{
+                                Body            = ($content | ConvertTo-Json -Depth 10)
+                                Method          = "Post"
+                                Headers         = $headers
+                                SkipBearerToken = $true
+                                Uri             = $uri
+                            }
+                        }
+
+                        # Call Rest Endpoint
+                        $responseSignal = Invoke-MappedAdapter `
+                            -Adapter "Condenser.Rest" `
+                            -Activity "Post" `
+                            -Signal $ConductionSignal `
+                            -Plan $RestPlan `
+                            -ItemSignal $ItemSignal |
+                        Select-Object -Last 1
+
+                        if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) {
+                            return $opSignal
+                        }
+
+                        $responseResults += $responseSignal.GetResult()
                     }
 
-                    # Call Rest Endpoint
-                    $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "Post" -Signal $ConductionSignal -Plan $RestPlan -ItemSignal $ItemSignal
-                    if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) { return $opSignal }
-                    $opSignal.SetResult($responseSignal.GetResult())
+                    $opSignal.SetResult($responseResults)
                     break
                 }
 
@@ -158,22 +204,29 @@ class Network_DiscordBot {
                         $continue = $PollUntilResponse
                         # Get the Message Id from the previous step when there's a id to lookup from a previous message.
                         if ($MessageReplyPathSignal.HasResult()) {
-                            $messageIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $MessageReplyPathSignal.GetResult() | Select-Object -Last 1
-                            $messageId = $messageIdSignal.GetResult()
-                            $messageList = $responseSignal.GetResult()
-                            foreach ($message in $messageList) {
-                                $replyMessageIdSignal = Resolve-PathFromDictionary -Dictionary $message -Path "message_reference.message_id" -SignalLevel "Information" | Select-Object -Last 1
-                                if ($replyMessageIdSignal.HasResult()) {
-                                    if ($replyMessageIdSignal.GetResult() -eq $messageId) {
-                                        # Set opSignal Result to Message for processing.
-                                        #$opSignal.SetResult(($message | ConvertTo-Json -Depth 10))
-                                        $continue = $false
-                                        $opSignal.SetResult($message)
-                                        return $opSignal
+                            $messageIdsSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path $MessageReplyPathSignal.GetResult()  -SignalLevel "Information" | Select-Object -Last 1
+                            #if ($messageIdSignal.HasResult()) {
+                                $messagesIdsList = $messageIdsSignal.HasResult() ? $messageIdsSignal.GetResult() : $null
+                                $messageIds = @()
+                                foreach ($messagesIdsMsg in $messagesIdsList)
+                                {
+                                    $messageIds += $messagesIdsMsg.id
+                                }
+
+                                $messageList = $responseSignal.GetResult()
+                                foreach ($message in $messageList) {
+                                    $replyMessageIdSignal = Resolve-PathFromDictionary -Dictionary $message -Path "message_reference.message_id" -SignalLevel "Information" | Select-Object -Last 1
+                                    if ($replyMessageIdSignal.HasResult()) {
+                                        if ($messageIds -contains ($replyMessageIdSignal.GetResult())) {
+                                            # Set opSignal Result to Message for processing.
+                                            #$opSignal.SetResult(($message | ConvertTo-Json -Depth 10))
+                                            $continue = $false
+                                            $opSignal.SetResult($message)
+                                            return $opSignal
+                                        }
                                     }
                                 }
-                            }
-
+                            #}
                         }
 
                         if ($continue) {

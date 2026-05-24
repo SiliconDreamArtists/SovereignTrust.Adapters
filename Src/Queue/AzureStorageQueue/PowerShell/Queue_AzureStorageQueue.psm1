@@ -65,7 +65,9 @@ class Queue_AzureStorageQueue {
 
         # optional: strip surrounding quotes on values
         foreach ($k in @($ht.Keys)) {
-            $v = [string]$ht[$k]
+            $v = [string]$ht[$k]  
+
+
             if (
                 ($v.StartsWith('"') -and $v.EndsWith('"')) -or
                 ($v.StartsWith("'") -and $v.EndsWith("'"))
@@ -83,18 +85,22 @@ class Queue_AzureStorageQueue {
         $clean = @()
         $filters = @()
 
-        foreach ($seg in ($Path -split '\.')) {
+#        foreach ($seg in ($Path -split '\.')) {
 
-            $s = $seg.Trim()
+            $s = $Path.Trim()
 
             if ($s -match '^(?<name>[^\[\]]+)\[(?<kvp>[^\]]*)\]$') {
+                $clean += $matches.name.Trim()
+                $filters += $this.ConvertKvpBlockToObject($matches.kvp)
+            }
+            elseif ($s -match '^(?<name>[^()]+)\((?<kvp>[^)]*)\)$') {
                 $clean += $matches.name.Trim()
                 $filters += $this.ConvertKvpBlockToObject($matches.kvp)
             }
             else {
                 $clean += $s
             }
-        }
+ #       }
 
         return [pscustomobject]@{
             Path    = ($clean -join '.')
@@ -184,15 +190,15 @@ class Queue_AzureStorageQueue {
                     # TODO: This handeling needs to be moved to a condenser call that calls the discord network adapter message handler.
 
                     # TODO: These mappings should be done in a plan to create a new config object to pass on
-                    $applicationIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.application_id" | Select-Object -Last 1
-                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
-                    $channelNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
-                    $channelTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" | Select-Object -Last 1
-                    $channelTypeSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.type" | Select-Object -Last 1
-                    $interactionIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.id" | Select-Object -Last 1
-                    $interactionSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.token" | Select-Object -Last 1
-                    $replySignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.value" | Select-Object -Last 1
-                    $nameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.name" | Select-Object -Last 1
+                    $applicationIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.application_id" -SignalLevel "Warning" | Select-Object -Last 1
+                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" -SignalLevel "Warning" | Select-Object -Last 1
+                    $channelNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id" -SignalLevel "Warning" | Select-Object -Last 1
+                    $channelTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.id -SignalLevel "Warning"" | Select-Object -Last 1
+                    $channelTypeSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.channel.type" -SignalLevel "Warning" | Select-Object -Last 1
+                    $interactionIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.id" -SignalLevel "Warning" | Select-Object -Last 1
+                    $interactionSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.token" -SignalLevel "Warning" | Select-Object -Last 1
+                    $replySignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.value" -SignalLevel "Warning" | Select-Object -Last 1
+                    $nameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.data.options.0.name" -SignalLevel "Warning" | Select-Object -Last 1
  
                     $applicationId = $applicationIdSignal.GetResult()
                     $interactionId = $interactionIdSignal.GetResult()
@@ -207,9 +213,9 @@ class Queue_AzureStorageQueue {
                     $reply = $replySignal.GetResult()
   
 
-                    $userTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.global_name" | Select-Object -Last 1
-                    $userIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.id" | Select-Object -Last 1
-                    $userNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.username" | Select-Object -Last 1
+                    $userTitleSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.global_name" -SignalLevel "Warning" | Select-Object -Last 1
+                    $userIdSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.id" -SignalLevel "Warning" | Select-Object -Last 1
+                    $userNameSignal = Resolve-PathFromDictionary -Dictionary $MessageItem -Path "@.member.user.username" -SignalLevel "Warning" | Select-Object -Last 1
                     # Channel ID Is used to hold a conversation in the message graph
 
                     # Call the session adapter and request or register session
@@ -231,13 +237,13 @@ class Queue_AzureStorageQueue {
                         }
                     }
 
-                    $SessionItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
-                    $SessionItemSignal.SetJacketResult($SessionItemResult)
-
-                    $sessionResult = Invoke-MappedAdapter -Signal $ConductionSignal -ItemSignal $SessionItemSignal -Plan $SessionPlan -Adapter "Session.System" -Activity "RequestOrRegister" | Select-Object -Last 1
-
                     # Name is the activity to perform and then specific handling for the way it's done
                     if ($name) {
+                        $SessionItemSignal = [Signal]::Start("Queue_AzureStorageQueue.HandleItem.$($ItemSignal.Name)", $ItemSignal) | Select-Object -Last 1
+                        $SessionItemSignal.SetJacketResult($SessionItemResult)
+
+                        $sessionResult = Invoke-MappedAdapter -Signal $ConductionSignal -ItemSignal $SessionItemSignal -Plan $SessionPlan -Adapter "Session.System" -Activity "RequestOrRegister" | Select-Object -Last 1
+
                         switch ($name) {
                             "direction" {
                                 # Direction -> response to a prompt
@@ -291,6 +297,12 @@ class Queue_AzureStorageQueue {
                                 if ($ItemValue)
                                 {
                                     $null = Add-PathToDictionary -Dictionary $SentItemSignal -Path "*.#.Data" -Value $ItemValue
+
+                                    # Attach data ($ItemValue) to the session that will be ran by the plan.
+                                    if ($sessionResult)
+                                    {
+                                        $null = Add-PathToDictionary -Dictionary $sessionResult -Path "*.#.Data" -Value $ItemValue
+                                    }
                                 }
 
                                 if ($sessionResult)

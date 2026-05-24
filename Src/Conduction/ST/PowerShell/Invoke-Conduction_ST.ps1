@@ -92,11 +92,12 @@ function Invoke-Conduction_ST {
                 if ($invokeResultSignal.Success()) {
                     $items = $phaseGraphSignal.GetJacket().GetResult()
 
+                    # TODO: This is broken, it probably doesn't process multiple phases correctly.
                 foreach ($dependsOnItemSignal in $items) {
-                        $dependsOnItemSignal = Resolve-PathFromDictionary -Dictionary $dependsOnItemSignal -Path "%.@.Name" | Select-Object -Last 1
+                        $dependsOnItemNameSignal = Resolve-PathFromDictionary -Dictionary $dependsOnItemSignal -Path "%.@.Name" | Select-Object -Last 1
                         $null = Add-PathToDictionary -Dictionary $dependsOnItemSignal -Path "@.Plan" -Value $Plan
 
-                        Invoke-ProcessPhaseSetDependsOn -conductionSignal $conductionSignal -opSignal $opSignal -phasesSignal $phasesSignal -gridResultSignal $gridResultSignal -ItemSignal $ItemSignal -Plan $Plan -DependsOn $dependsOnItemSignal.GetResult()
+                        Invoke-ProcessPhaseSetDependsOn -conductionSignal $conductionSignal -opSignal $opSignal -phasesSignal $phasesSignal -gridResultSignal $gridResultSignal -ItemSignal $ItemSignal -Plan $Plan -DependsOn $dependsOnItemNameSignal.GetResult()
                     }
                 }
 
