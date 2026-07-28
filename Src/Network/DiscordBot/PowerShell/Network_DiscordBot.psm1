@@ -128,6 +128,57 @@ class Network_DiscordBot {
             $headers["User-Agent"] = "DiscordBot (https://sda.studio, 1.0) PowerShell/7"
 
             switch ($Activity) {
+                "SendFile" {
+                    $sourceContentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1
+                    $sourceBinarySignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.FullPath" | Select-Object -Last 1
+                    $channelIdSignal = Resolve-PathFromDictionary -Dictionary $ItemSignal -Path "@.Id" | Select-Object -Last 1
+
+                    $uri = "$($uriSignal.GetResult())/channels/$($channelIdSignal.GetResult())/messages"
+
+                    $contentText = [string]$sourceContentSignal.GetResult()
+$content = @{
+Content = $contentText
+
+}
+                    $attachmentFilePath = $sourceBinarySignal.GetResult()
+
+                    $responseResults = @()
+
+                    $RestPlan = [PSCustomObject]@{
+                        Config = [PSCustomObject]@{
+                            Method          = "Post"
+                            Headers         = $headers
+                            SkipBearerToken = $true
+                            Uri             = $uri
+                            AttachmentPath  = $attachmentFilePath
+                            Form            = @{
+                                payload_json = ($content | ConvertTo-Json -Depth 10) 
+                                "files[0]"   = $attachmentFilePath
+                            }
+#                            payload_json = ($contentText | ConvertTo-Json -Depth 10)
+#                            "files[0]"   = $attachmentFilePath
+                        }
+                    }
+
+                    # Call Rest Endpoint
+                    $responseSignal = Invoke-MappedAdapter `
+                        -Adapter "Condenser.Rest" `
+                        -Activity "Post" `
+                        -Signal $ConductionSignal `
+                        -Plan $RestPlan `
+                        -ItemSignal $ItemSignal |
+                    Select-Object -Last 1
+
+                    if ($opSignal.MergeSignalAndVerifyFailure($responseSignal)) {
+                        return $opSignal
+                    }
+
+                    $responseResults += $responseSignal.GetResult()
+
+                    $opSignal.SetResult($responseResults)
+                    break
+                }
+
                 "SendMessage" {
                     # The App Insights Network Adapter prepares a custom plan to pass to its body. 
                     $sourceContentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1

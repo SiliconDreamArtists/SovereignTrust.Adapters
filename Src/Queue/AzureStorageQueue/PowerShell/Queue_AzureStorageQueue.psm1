@@ -397,6 +397,7 @@ class Queue_AzureStorageQueue {
 
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value "$HostAddress/$Uri"
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Host" -Value "$HostAddress"
+                    $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Host" -Value "https://storage.azure.com/"
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.CacheAccessToken" -Value $true
 
                     $responseJacketSignal = [Signal]::Start("Queue_AzureStorageQueue.Invoke:$Slot.$Activity.Jacket", $ItemSignal) | Select-Object -Last 1
