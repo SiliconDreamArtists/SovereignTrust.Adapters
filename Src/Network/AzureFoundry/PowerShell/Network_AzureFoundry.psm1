@@ -85,20 +85,75 @@ class Network_AzureFoundry {
             switch ($Activity) {
                 "SendMessage" {
                     $contentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1
-                    $messages = @(
-                        @{
-                            role = 'user'
-                            content = $contentSignal.GetResult()
+                    $mediaPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MediaPath" -SignalLevel "Information" | Select-Object -Last 1
+                    $mediaUrlSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MediaUrl" -SignalLevel "Information" | Select-Object -Last 1
+
+                    if (($mediaPathSignal.HasResult() -and $mediaPathSignal.GetResult() -ne "") -or ($mediaUrlSignal.HasResult() -and $mediaUrlSignal.GetResult() -ne "")) {
+                        $mediaTypeSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MediaType" -Default "image" | Select-Object -Last 1
+                        $mediaPath = $mediaPathSignal.HasResult() ? $mediaPathSignal.GetResult() : $mediaUrlSignal.GetResult()
+                        $isUrl = $mediaUrlSignal.HasResult()
+                        $mediaExtension = [System.IO.Path]::GetExtension($mediaPath).ToLowerInvariant()
+                        $mediaType = $mediaTypeSignal.GetResult()
+
+                        $mimeType = switch ($mediaExtension) {
+                            ".jpg" { "image/jpeg" }
+                            ".jpeg" { "image/jpeg" }
+                            ".png" { "image/png" }
+                            ".webp" { "image/webp" }
+                            ".gif" { "image/gif" }
+                            default {
+                                throw "Unsupported image format: $mediaExtension"
+                            }
                         }
-                    )
+
+                        # TODO: Add Support for media url instead of simply a local file.
+                        # Convert the local image into a Base64 data URL.
+                        
+                        if ($isUrl) {
+                            $mediaDataUrl = $mediaPath
+                        }
+                        else {
+                            $mediaBytes = [System.IO.File]::ReadAllBytes($mediaPath)
+                            $mediaBase64 = [Convert]::ToBase64String($mediaBytes)
+                            $mediaDataUrl = "data:$mimeType;base64,$mediaBase64"
+                        }
+                                                $messages = @(
+                            @{
+                                role    = "user"
+                                content = @(
+                                    @{
+                                        type = "text"
+                                        text = $contentSignal.GetResult()
+                                    },
+                                    @{
+                                        type      = "$($mediaType)_url"
+                                        image_url = @{
+                                            url    = $mediaDataUrl
+                                            detail = "high"
+                                        }
+                                    }
+                                )
+                            }
+                        )
+
+                    }
+                    else {
+                        $messages = @(
+                            @{
+                                role    = 'user'
+                                content = $contentSignal.GetResult()
+                            }
+                        )
+                    }
+
                     $body = [PSCustomObject]@{
-                        messages = $messages
+                        messages              = $messages
                         max_completion_tokens = 13107
-                        temperature = 1
-                        top_p = 1
-                        frequency_penalty = 0
-                        presence_penalty = 0
-                        model = 'gpt-4.1'
+                        temperature           = 1
+                        top_p                 = 1
+                        frequency_penalty     = 0
+                        presence_penalty      = 0
+                        model                 = 'gpt-5'
                     }
 
                     $clonePlan = (Resolve-ClonePlan -Plan $Plan | Select-Object -Last 1).GetResult()
@@ -109,7 +164,7 @@ class Network_AzureFoundry {
                     $resource = $ResourceSignal.GetResult()
 
                     $headers = @{
-                        "Content-Type" = "application/json"
+                        "Content-Type"  = "application/json"
                         "Authorization" = "Bearer $resource"
                     }
 
@@ -120,7 +175,7 @@ class Network_AzureFoundry {
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Body" -Value $body
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Headers" -Value $headers
                     $null = Add-PathToDictionary -Dictionary $clonePlan -Path "Config.Uri" -Value "$HostAddress"
-                    $message = $contentSignal.GetResult()
+
                     $responseSignal = Invoke-MappedAdapter -Adapter "Condenser.Rest" -Activity "POST" -Signal $ConductionSignal -Plan $clonePlan -ItemSignal $ItemSignal
                     $opSignal.SetResult($responseSignal.GetResult())
                     break   
@@ -145,7 +200,7 @@ class Network_AzureFoundry {
                     if ($MessageSignal.HasResult()) {
                         $opSignal.SetResult($MessageSignal.GetResult())
                     }
-                  break   
+                    break   
                 }
                 default {
                     $opSignal.LogWarning("Unsupported Activity: $Activity")
@@ -159,7 +214,8 @@ class Network_AzureFoundry {
                 if ($resultSignal.Success()) {
                     $opSignal.SetResult($resultSignal.GetResult($true))
                     $opSignal.LogInformation("✅ $Slot.$Activity succeeded.")
-                } else {
+                }
+                else {
                     $opSignal.LogWarning("$Slot.$Activity did not succeed.")
                 }
             }
