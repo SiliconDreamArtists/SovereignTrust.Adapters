@@ -1,14 +1,4 @@
-$sgModuleName = 'SignalGraph'
-
-if (-not (Get-Module -Name $sgModuleName)) {
-    $sgPath = Join-Path $PSScriptRoot "../../../../../SignalGraph/Src/PowerShell/SignalGraph.psd1"
-    Import-Module (Resolve-Path $sgPath).ProviderPath -Force
-}
-
-    . "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\SignalEntry.ps1"
-    . "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Signal.ps1"
-    . "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Graph.ps1"
-
+using module SignalGraph
 $sgModuleName = 'SovereignTrust.Foundation'
 
 if (-not (Get-Module -Name $sgModuleName)) {

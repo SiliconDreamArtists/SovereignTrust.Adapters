@@ -1,12 +1,4 @@
-. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\SignalEntry.ps1"
-. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Signal.ps1"
-. "$PSScriptRoot\..\..\..\..\..\SignalGraph\Src\PowerShell\Classes\Graph.ps1"
-
-$sgModuleName = 'SignalGraph'
-if (-not (Get-Module -Name $sgModuleName)) {
-    $sgPath = Join-Path $PSScriptRoot "../../../../../SignalGraph/Src/PowerShell/SignalGraph.psd1"
-    Import-Module (Resolve-Path $sgPath).ProviderPath -Force
-}
+using module SignalGraph
 
 $stModuleName = 'SovereignTrust.Foundation'
 if (-not (Get-Module -Name $stModuleName)) {
@@ -84,6 +76,307 @@ class Network_AzureFoundry {
 
             switch ($Activity) {
                 "SendMessage" {
+
+                    # ░▒▓█ OPTIONAL PROMPT COMPONENTS █▓▒░
+
+                    $systemSignal = Resolve-PathFromDictionary `
+                        -Dictionary $Plan `
+                        -Path "Config.Prompt.System" `
+                        -SignalLevel "Information" |
+                    Select-Object -Last 1
+
+                    $textsSignal = Resolve-PathFromDictionary `
+                        -Dictionary $Plan `
+                        -Path "Config.Prompt.Texts" `
+                        -SignalLevel "Information" |
+                    Select-Object -Last 1
+
+                    $mediaSignal = Resolve-PathFromDictionary `
+                        -Dictionary $Plan `
+                        -Path "Config.Prompt.Media" `
+                        -SignalLevel "Information" |
+                    Select-Object -Last 1
+
+
+                    # ░▒▓█ BUILD MESSAGES █▓▒░
+
+                    $messages = @()
+                    # ─────────────────────────────────────────────
+                    # SYSTEM
+                    # Optional.
+                    # Null / empty / whitespace means no system message.
+                    # ─────────────────────────────────────────────
+
+                    if ($systemSignal.HasResult()) {
+                        $systemContent = $systemSignal.GetResult()
+                        if (
+                            $null -ne $systemContent -and
+                            -not [string]::IsNullOrWhiteSpace([string]$systemContent)
+                        ) {
+                            $messages += @{
+                                role    = "system"
+                                content = [string]$systemContent
+                            }
+                        }
+                    }
+
+                    # ─────────────────────────────────────────────
+                    # USER CONTENT PARTS
+                    #
+                    # Texts and Media both become content items
+                    # inside one user message.
+                    # ─────────────────────────────────────────────
+
+                    $userContent = @()
+
+                    # ░▒▓█ TEXTS █▓▒░
+                    if ($textsSignal.HasResult()) {
+                        $texts = $textsSignal.GetResult()
+                        if ($null -ne $texts) {
+                            foreach ($text in @($texts)) {
+                                if (
+                                    $null -eq $text -or
+                                    [string]::IsNullOrWhiteSpace([string]$text)
+                                ) {
+                                    continue
+                                }
+
+                                $userContent += @{
+                                    type = "text"
+                                    text = [string]$text
+                                }
+                            }
+                        }
+                    }
+
+
+                    # ░▒▓█ MEDIA █▓▒░
+                    if ($mediaSignal.HasResult()) {
+                        $mediaItems = $mediaSignal.GetResult()
+                        if ($null -ne $mediaItems) {
+                            foreach ($mediaItem in @($mediaItems)) {
+                                if ($null -eq $mediaItem) {
+                                    continue
+                                }
+
+                                # ─────────────────────────────────
+                                # Resolve optional media properties
+                                # ─────────────────────────────────
+
+                                $mediaPath = $null
+                                $mediaUrl = $null
+                                $mediaType = "image"
+                                $detail = "high"
+
+                                if ($mediaItem -is [System.Collections.IDictionary]) {
+                                    if ($mediaItem.Contains("MediaPath")) {
+                                        $mediaPath = $mediaItem["MediaPath"]
+                                    }
+
+                                    if ($mediaItem.Contains("MediaUrl")) {
+                                        $mediaUrl = $mediaItem["MediaUrl"]
+                                    }
+
+                                    if ($mediaItem.Contains("MediaType")) {
+                                        $mediaType = $mediaItem["MediaType"]
+                                    }
+
+                                    if ($mediaItem.Contains("Detail")) {
+                                        $detail = $mediaItem["Detail"]
+                                    }
+                                }
+                                else {
+                                    if ($mediaItem.PSObject.Properties["MediaPath"]) {
+                                        $mediaPath = $mediaItem.MediaPath
+                                    }
+
+                                    if ($mediaItem.PSObject.Properties["MediaUrl"]) {
+                                        $mediaUrl = $mediaItem.MediaUrl
+                                    }
+
+                                    if ($mediaItem.PSObject.Properties["MediaType"]) {
+                                        $mediaType = $mediaItem.MediaType
+                                    }
+
+                                    if ($mediaItem.PSObject.Properties["Detail"]) {
+                                        $detail = $mediaItem.Detail
+                                    }
+                                }
+
+                                # Nothing usable in this media entry.
+                                if (
+                                    [string]::IsNullOrWhiteSpace([string]$mediaPath) -and
+                                    [string]::IsNullOrWhiteSpace([string]$mediaUrl)
+                                ) {
+                                    continue
+                                }
+
+                                # Current adapter implementation supports images.
+                                if ([string]::IsNullOrWhiteSpace([string]$mediaType)) {
+                                    $mediaType = "image"
+                                }
+
+                                $mediaType = ([string]$mediaType).ToLowerInvariant()
+
+                                if ($mediaType -ne "image") {
+                                    throw "Unsupported media type: $mediaType"
+                                }
+
+                                # ─────────────────────────────────
+                                # URL media
+                                # ─────────────────────────────────
+
+                                if (-not [string]::IsNullOrWhiteSpace([string]$mediaUrl)) {
+
+                                    $mediaDataUrl = [string]$mediaUrl
+                                }
+
+                                # ─────────────────────────────────
+                                # Local media
+                                # ─────────────────────────────────
+
+                                else {
+                                    $mediaPath = [string]$mediaPath
+                                    $mediaExtension =
+                                    [System.IO.Path]::GetExtension($mediaPath).ToLowerInvariant()
+
+                                    $mimeType = switch ($mediaExtension) {
+                                        ".jpg" { "image/jpeg" }
+                                        ".jpeg" { "image/jpeg" }
+                                        ".png" { "image/png" }
+                                        ".webp" { "image/webp" }
+                                        ".gif" { "image/gif" }
+
+                                        default {
+                                            throw "Unsupported image format: $mediaExtension"
+                                        }
+                                    }
+
+                                    $mediaBytes =
+                                    [System.IO.File]::ReadAllBytes($mediaPath)
+
+                                    $mediaBase64 =
+                                    [Convert]::ToBase64String($mediaBytes)
+
+                                    $mediaDataUrl =
+                                    "data:$mimeType;base64,$mediaBase64"
+                                }
+
+
+                                # ─────────────────────────────────
+                                # Add image content part
+                                # ─────────────────────────────────
+
+                                $userContent += @{
+                                    type      = "image_url"
+                                    image_url = @{
+                                        url    = $mediaDataUrl
+                                        detail = $detail
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    # ░▒▓█ CREATE USER MESSAGE IF CONTENT EXISTS █▓▒░
+                    if ($userContent.Count -gt 0) {
+                        $messages += @{
+                            role    = "user"
+                            content = $userContent
+                        }
+                    }
+
+
+                    # ░▒▓█ REQUIRE AT LEAST SOME USABLE PROMPT CONTENT █▓▒░
+                    if ($messages.Count -eq 0) {
+                        throw "AI Prompt contains no usable System, Texts, or Media content."
+                    }
+
+                    # ░▒▓█ REQUEST BODY █▓▒░
+                    $body = [PSCustomObject]@{
+                        messages              = $messages
+                        max_completion_tokens = 13107
+                        temperature           = 1
+                        top_p                 = 1
+                        frequency_penalty     = 0
+                        presence_penalty      = 0
+                        model                 = "gpt-5"
+                    }
+
+                    # ░▒▓█ SEND REQUEST █▓▒░
+                    $clonePlan =
+                    (Resolve-ClonePlan -Plan $Plan |
+                    Select-Object -Last 1).GetResult()
+
+                    $HostSignal =
+                    Resolve-PathFromDictionary `
+                        -Dictionary $this.Signal `
+                        -Path "%.@.Addresses" |
+                    Select-Object -Last 1
+
+                    $HostAddress = $HostSignal.GetResult()
+
+                    $ResourceSignal =
+                    Resolve-PathFromDictionary `
+                        -Dictionary $this.Signal `
+                        -Path "%.@.Resource" |
+                    Select-Object -Last 1
+
+                    $resource = $ResourceSignal.GetResult()
+
+                    $headers = @{
+                        "Content-Type"  = "application/json"
+                        "Authorization" = "Bearer $resource"
+                    }
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.Method" `
+                        -Value "Post"
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.Host" `
+                        -Value "$HostAddress"
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.CacheAccessToken" `
+                        -Value $true
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.SkipBearerToken" `
+                        -Value $true
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.Body" `
+                        -Value $body
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.Headers" `
+                        -Value $headers
+
+                    $null = Add-PathToDictionary `
+                        -Dictionary $clonePlan `
+                        -Path "Config.Uri" `
+                        -Value "$HostAddress"
+
+                    $responseSignal =
+                    Invoke-MappedAdapter `
+                        -Adapter "Condenser.Rest" `
+                        -Activity "POST" `
+                        -Signal $ConductionSignal `
+                        -Plan $clonePlan `
+                        -ItemSignal $ItemSignal
+
+                    $opSignal.SetResult($responseSignal.GetResult())
+
+                    break
+                }
+                "SendMessageOriginal" {
                     $contentSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.Content" | Select-Object -Last 1
                     $mediaPathSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MediaPath" -SignalLevel "Information" | Select-Object -Last 1
                     $mediaUrlSignal = Resolve-PathFromDictionary -Dictionary $Plan -Path "Config.MediaUrl" -SignalLevel "Information" | Select-Object -Last 1
@@ -106,9 +399,7 @@ class Network_AzureFoundry {
                             }
                         }
 
-                        # TODO: Add Support for media url instead of simply a local file.
-                        # Convert the local image into a Base64 data URL.
-                        
+                        # Convert the local image into a Base64 data URL.                        
                         if ($isUrl) {
                             $mediaDataUrl = $mediaPath
                         }
@@ -117,7 +408,7 @@ class Network_AzureFoundry {
                             $mediaBase64 = [Convert]::ToBase64String($mediaBytes)
                             $mediaDataUrl = "data:$mimeType;base64,$mediaBase64"
                         }
-                                                $messages = @(
+                        $messages = @(
                             @{
                                 role    = "user"
                                 content = @(
