@@ -18,7 +18,7 @@ class Data_AzureSql {
             $opSignal.SetResult($this)
         }
         catch {
-            $null = $opSignal.LogCritical("Could not construct AzureSql adapter: $($_.Exception.Message)", $null, $_)
+            $null = $opSignal.LogCritical('Could not construct AzureSql adapter.')
         }
         return $opSignal
     }

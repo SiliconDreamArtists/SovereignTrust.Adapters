@@ -77,6 +77,7 @@ Run focused normalization tests. Report findings by severity with file/line refe
 Perform Prompt:
 
 ```text
+Prompt C (Steps 4-5)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-3 and implement steps 4-5 of Recommended implementation order.
 
 Inspect Storage/AzureStorageAccount and the existing build/deployment conventions. Select and pin a compatible Microsoft.Data.SqlClient version and implement a repeatable build or packaging restore that includes its required managed and native runtime dependencies in the AzureSql module artifact. Document the supported deployment target and package layout. Runtime module import must never download dependencies. Load the packaged provider before the adapter class and fail import clearly when required assemblies are missing.
@@ -105,6 +106,7 @@ Inspect packaging, fresh PowerShell 7 explicit-import smoke-test, and focused li
 Perform Prompt:
 
 ```text
+Prompt D (Steps 6-7)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-5 and implement steps 6-7 of Recommended implementation order.
 
 Implement secure connection construction from the hydrated adapter jacket Resource using Microsoft.Data.SqlClient.SqlConnectionStringBuilder. Require a valid supported resource, SQL data source, and initial catalog. Never use the Key Vault Addresses value as a SQL endpoint. Apply encryption, certificate validation, application name, and connection timeout requirements from the plan. Support and document the selected authentication modes, including Active Directory Default and Active Directory Managed Identity. Do not introduce an insecure development override without the separate approval required by the plan. Keep connection strings, credentials, access tokens, and parameter values out of logs and errors.
@@ -131,6 +133,7 @@ Check that tests exercise actual builder and parameter code rather than mocking 
 Perform Prompt:
 
 ```text
+Prompt E
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-7 and implement steps 8-10 of Recommended implementation order.
 
 Implement Write, Query, and Delete using the packaged provider, secure connection helper, typed parameters, and local normalized command values. Write must require Config.Procedure, use StoredProcedure, bind normalized JSON as NVarChar(MAX) to Config.PayloadParameter or @Payload, and capture result sets, affected rows, output parameters, and the return value. Do not modify the original Config.Content to satisfy the normalized JSON requirement.
@@ -145,6 +148,7 @@ Add and run focused operation tests through the internal execution boundary for 
 Review Prompt:
 
 ```text
+Review Prompt E
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt E and the review instructions, and applicable repository guidance. Review steps 8-10 without modifying implementation files. Trace each operation from Invoke through command construction, execution, result materialization, and returned Signal.
 
 For Write, verify required Procedure, StoredProcedure command type, locally normalized JSON, the configured/default payload parameter, NVarChar(MAX), additional typed parameters, and capture of results, affected rows, output parameters, and return value. Ensure the original plan is unchanged. For Query, verify required CommandText, Text type, independent parameter binding, traversal of all results, and schema retention for empty result sets. For Delete, verify ExecuteNonQuery where no results are expected, zero retained as zero, and -1 represented as null.
@@ -159,6 +163,7 @@ Run focused operation tests without live mutation tests. Treat final precision c
 Perform Prompt:
 
 ```text
+ Prompt F (Steps 11-12)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-10 and implement steps 11-12 of Recommended implementation order.
 
 Complete and harden the shared JSON result converter. Preserve schema metadata even for empty result sets. Apply the plan's conversion rules for database nulls, binary/base64 values, canonical GUIDs, invariant ISO-8601 dates and times, precision-preserving decimal strings, and integers outside the JavaScript safe range. Keep safe integers and floating-point values as JSON numbers. Apply conversion consistently to rows and output parameters, including return values. Ensure no provider or database object escapes through results or signal jackets.
@@ -171,6 +176,7 @@ Complete deterministic disposal and sanitized failed-signal handling across all 
 Review Prompt:
 
 ```text
+Review  Prompt F (Steps 11-12)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt F and the review instructions, and applicable repository guidance. Review steps 11-12 without modifying implementation files. Inspect the real converter, transaction orchestration, error handling, and disposal paths.
 
 Verify the common JSON envelope, complete schema for empty and multiple result sets, database nulls, base64 binary, canonical GUIDs, invariant dates/times, precision-preserving decimal strings, and string conversion outside both positive and negative JavaScript safe-integer boundaries. Check safe integers and floating-point values remain numbers, including under a non-default culture. Apply the same review to output parameters and return values. Inspect nested results and signal jackets for escaping provider/database objects.
@@ -185,6 +191,7 @@ Inspect focused-test and offline adapter-suite evidence, reusing applicable resu
 Perform Prompt:
 
 ```text
+ Prompt G (Steps 13-14)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable guidance in each affected repository. Build on steps 1-12 and implement steps 13-14 of Recommended implementation order.
 
 Inspect SDAFusion-Content/SDA/Config/SDAFusionApp.Json and add or correct the sdadev01 / SDAWorkItems adapter mapping without duplicating an existing jacket or disturbing unrelated configuration. Use the plan's exact SDAFusionDatabase jacket, SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, protected Resource expression, and Key Vault Addresses value.
@@ -199,6 +206,7 @@ Validate configuration parsing, mapping uniqueness, example consistency, and foc
 Review Prompt:
 
 ```text
+Review  Prompt G (Steps 13-14)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt G and the review instructions, and applicable guidance in affected repositories. Review steps 13-14 without modifying implementation files. Inspect configuration, loader contracts, examples, documentation, and their diffs together.
 
 Verify the sdadev01 / SDAWorkItems mapping exists exactly once with the plan's SDAFusionDatabase name, exact SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, protected Resource expression, and Key Vault Addresses. Confirm this implementation introduced no unrelated changes to agents, roles, or jackets; distinguish pre-existing and unrelated workspace edits. Trace registration into FusionDatabase and hydration into Construct; ensure SQL connection construction consumes hydrated Resource and never uses Addresses as its SQL endpoint. Use synthetic values for offline hydration checks and do not retrieve or print operational secrets.
@@ -213,6 +221,7 @@ Run configuration parsing, mapping uniqueness, example validation, and focused l
 Perform Prompt:
 
 ```text
+Prompt H (Steps 15-16)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-14 and implement steps 15-16 of Recommended implementation order.
 
 Complete and run the production adapter unit and contract suites and direct mapped-routing tests. Verify normalization, immutable inputs, typed parameters, result envelopes, transactions, disposal, and sanitized failed signals against the plan.
@@ -229,6 +238,7 @@ Run the existing Foundation mapped-adapter and plan-execution regression suites.
 Review Prompt:
 
 ```text
+Review Prompt H (Steps 15-16)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt H, all completion criteria, and the review instructions, and applicable repository guidance. Review steps 15-16 and overall completion without modifying implementation files. Inspect actual test code, implementation paths, commands, and results; do not accept the implementation summary alone as evidence.
 
 Verify unit and contract coverage exercises real normalization, immutable inputs, typed parameters, command selection, JSON conversion, transaction orchestration, disposal, and failed signals. Check direct mapped routing and existing Foundation mapped-adapter/plan-execution regressions. Confirm skips, unavailable dependencies, and unrelated pre-existing failures are reported accurately, not counted as passes.
