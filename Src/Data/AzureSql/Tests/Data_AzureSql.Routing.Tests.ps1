@@ -1,4 +1,4 @@
-using module ../../../../../SignalGraph/Src/PowerShell/SignalGraph/SignalGraph.psd1
+using module SignalGraph
 
 $ErrorActionPreference = 'Stop'
 $foundationManifest = Join-Path $PSScriptRoot '../../../../../SovereignTrust.Foundation/Src/PowerShell/SovereignTrust.Foundation.psd1'
@@ -18,6 +18,7 @@ $module = Get-Module Data_AzureSql
         param($Adapter, $Slot, $Activity, $Config, $Plan, $ConductionSignal, $ItemSignal)
         if ($Slot -ne 'FusionDatabase' -or $Activity -ne 'Query' -or
             $Adapter.Configuration.Resource -ne 'synthetic-test-resource' -or
+            $Adapter.Configuration.Addresses[0] -ne 'https://key-vault.example/' -or
             $Config.Parameters.'@Id' -ne 7 -or $Config.CommandTimeoutSeconds -ne 15) {
             throw 'Mapped route did not preserve slot, jacket, or plan configuration.'
         }
@@ -41,11 +42,15 @@ $itemSignal = [Signal]::Start('AzureSqlRouting.Item') | Select-Object -Last 1
 $itemSignal.SetPointer($conductor.Signal.GetPointer()) | Out-Null
 
 $azureSql = Resolve-Data_AzureSql
+# Model the loader's deferred hydration handoff with a synthetic resource.
+# The real Key Vault lookup belongs to the gated integration suite.
 $jacket = [PSCustomObject]@{
     Name = 'SDAFusionDatabase'; Kind = 'Data'; Slot = 'FusionDatabase'
     VirtualPath = 'SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full'
-    Resource = 'synthetic-test-resource'
+    Resource = '[Storage.Secrets.Read.sdafusion-sqldatabase|]'
+    Addresses = @('https://key-vault.example/')
 }
+$jacket.Resource = 'synthetic-test-resource'
 $construct = $azureSql.Construct($jacket)
 Assert-True (-not $construct.Failure()) 'Could not construct AzureSql adapter.'
 $registration = Register-AdapterToMappedSlot -ConductorJacketSignal $conductor.Signal `

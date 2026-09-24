@@ -41,6 +41,12 @@ function Get-AzureSqlTypeName {
 function ConvertTo-AzureSqlJsonValue {
     param([object]$Value)
     if ($null -eq $Value -or $Value -is [DBNull]) { return $null }
+    if ($Value -is [System.Data.SqlTypes.INullable] -and $Value.IsNull) { return $null }
+    if ($Value -is [System.Data.SqlTypes.SqlDecimal]) {
+        # SqlDecimal.ToString retains all 38 digits and trailing scale under
+        # invariant and non-default cultures; CLR Decimal cannot hold every value.
+        return $Value.ToString()
+    }
     if ($Value -is [byte[]]) { return [Convert]::ToBase64String($Value) }
     if ($Value -is [datetime]) {
         $utcValue = if ($Value.Kind -eq [DateTimeKind]::Unspecified) {
@@ -52,13 +58,28 @@ function ConvertTo-AzureSqlJsonValue {
         return $utcValue.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     }
     if ($Value -is [datetimeoffset]) { return $Value.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture) }
-    if ($Value -is [decimal] -or $Value -is [System.Numerics.BigInteger] -or $Value -is [uint64]) {
+    if ($Value -is [decimal]) {
         return ([IFormattable]$Value).ToString($null, [Globalization.CultureInfo]::InvariantCulture)
     }
-    if ($Value -is [long] -and ([Math]::Abs([decimal]$Value) -gt 9007199254740991)) {
-        return $Value.ToString([Globalization.CultureInfo]::InvariantCulture)
+    if ($Value -is [System.Numerics.BigInteger]) {
+        if ($Value -gt [System.Numerics.BigInteger]9007199254740991 -or
+            $Value -lt [System.Numerics.BigInteger](-9007199254740991)) {
+            return $Value.ToString([Globalization.CultureInfo]::InvariantCulture)
+        }
+        return [long]$Value
     }
-    if ($Value -is [guid] -or $Value -is [timespan]) { return [string]$Value }
+    if ($Value -is [long] -or $Value -is [uint64] -or $Value -is [int] -or
+        $Value -is [uint32] -or $Value -is [short] -or $Value -is [uint16] -or
+        $Value -is [byte] -or $Value -is [sbyte]) {
+        if ([decimal]$Value -gt 9007199254740991 -or [decimal]$Value -lt -9007199254740991) {
+            return $Value.ToString([Globalization.CultureInfo]::InvariantCulture)
+        }
+        return $Value
+    }
+    if ($Value -is [guid]) { return $Value.ToString('D').ToLowerInvariant() }
+    if ($Value -is [timespan]) { return [System.Xml.XmlConvert]::ToString($Value) }
+    if ($Value -is [DateOnly]) { return $Value.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }
+    if ($Value -is [TimeOnly]) { return $Value.ToString('HH:mm:ss.fffffff', [Globalization.CultureInfo]::InvariantCulture) }
     if ($Value -is [double] -and ([double]::IsNaN($Value) -or [double]::IsInfinity($Value))) { return [string]$Value }
     if ($Value -is [single] -and ([single]::IsNaN($Value) -or [single]::IsInfinity($Value))) { return [string]$Value }
 
@@ -68,7 +89,9 @@ function ConvertTo-AzureSqlJsonValue {
         return [PSCustomObject]$result
     }
     if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
-        return @($Value | ForEach-Object { ConvertTo-AzureSqlJsonValue $_ })
+        $items = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) { $items.Add((ConvertTo-AzureSqlJsonValue $item)) }
+        return ,$items.ToArray()
     }
     if ($Value -is [PSCustomObject]) {
         $result = [ordered]@{}
@@ -77,16 +100,30 @@ function ConvertTo-AzureSqlJsonValue {
         }
         return [PSCustomObject]$result
     }
-    return $Value
+    if ($Value -is [string] -or $Value -is [bool] -or $Value -is [double] -or $Value -is [single] -or $Value -is [char]) {
+        return $Value
+    }
+    throw 'Azure SQL result contains an unsupported value type.'
+}
+
+function Get-AzureSqlDataColumnMetadata {
+    param([System.Data.DataColumn]$Column)
+    return [ordered]@{
+        Name = $Column.ColumnName
+        SourceName = $Column.ColumnName
+        Type = Get-AzureSqlTypeName $Column.DataType
+        Ordinal = $Column.Ordinal
+        AllowDBNull = $Column.AllowDBNull
+        Precision = $null
+        Scale = $null
+    }
 }
 
 function ConvertTo-AzureSqlResultSet {
     param([object]$Value, [string]$DefaultName = 'Table')
 
     if ($Value -is [System.Data.DataTable]) {
-        $columns = @($Value.Columns | ForEach-Object {
-            [ordered]@{ Name = $_.ColumnName; Type = Get-AzureSqlTypeName $_.DataType }
-        })
+        $columns = @($Value.Columns | ForEach-Object { Get-AzureSqlDataColumnMetadata $_ })
         $rows = @($Value.Rows | ForEach-Object {
             $row = [ordered]@{}
             foreach ($column in $Value.Columns) { $row[$column.ColumnName] = ConvertTo-AzureSqlJsonValue $_[$column] }
@@ -102,9 +139,7 @@ function ConvertTo-AzureSqlResultSet {
     $candidateRows = @($Value)
     if ($candidateRows.Count -gt 0 -and $candidateRows[0] -is [System.Data.DataRow]) {
         $table = $candidateRows[0].Table
-        $columns = @($table.Columns | ForEach-Object {
-            [ordered]@{ Name = $_.ColumnName; Type = Get-AzureSqlTypeName $_.DataType }
-        })
+        $columns = @($table.Columns | ForEach-Object { Get-AzureSqlDataColumnMetadata $_ })
         $rows = @($candidateRows | ForEach-Object {
             $dataRow = $_
             $row = [ordered]@{}
@@ -121,7 +156,15 @@ function ConvertTo-AzureSqlResultSet {
     if ((Test-AzureSqlObjectMember $Value 'Columns') -and (Test-AzureSqlObjectMember $Value 'Rows')) {
         $name = [string](Get-AzureSqlObjectValue $Value 'Name' $DefaultName)
         $columns = @(Get-AzureSqlObjectValue $Value 'Columns' @() | ForEach-Object {
-            [ordered]@{ Name = [string](Get-AzureSqlObjectValue $_ 'Name'); Type = [string](Get-AzureSqlObjectValue $_ 'Type' 'nvarchar') }
+            [ordered]@{
+                Name = [string](Get-AzureSqlObjectValue $_ 'Name')
+                SourceName = ConvertTo-AzureSqlJsonValue (Get-AzureSqlObjectValue $_ 'SourceName')
+                Type = [string](Get-AzureSqlObjectValue $_ 'Type' 'nvarchar')
+                Ordinal = ConvertTo-AzureSqlJsonValue (Get-AzureSqlObjectValue $_ 'Ordinal')
+                AllowDBNull = ConvertTo-AzureSqlJsonValue (Get-AzureSqlObjectValue $_ 'AllowDBNull')
+                Precision = ConvertTo-AzureSqlJsonValue (Get-AzureSqlObjectValue $_ 'Precision')
+                Scale = ConvertTo-AzureSqlJsonValue (Get-AzureSqlObjectValue $_ 'Scale')
+            }
         })
         $rows = @(Get-AzureSqlObjectValue $Value 'Rows' @() | ForEach-Object { ConvertTo-AzureSqlJsonValue $_ })
         return [PSCustomObject][ordered]@{ Name = $name; Columns = $columns; Rows = $rows }
@@ -147,7 +190,19 @@ function ConvertTo-AzureSqlResultSet {
             }
         }
     }
-    $columns = @($columnMap.Keys | ForEach-Object { [ordered]@{ Name = $_; Type = $columnMap[$_] } })
+    $ordinal = 0
+    $columns = @($columnMap.Keys | ForEach-Object {
+        [ordered]@{
+            Name = $_
+            SourceName = $_
+            Type = $columnMap[$_]
+            Ordinal = $ordinal
+            AllowDBNull = $null
+            Precision = $null
+            Scale = $null
+        }
+        $ordinal++
+    })
     return [PSCustomObject][ordered]@{
         Name = $DefaultName
         Columns = $columns
@@ -217,7 +272,7 @@ function ConvertTo-AzureSqlJsonResult {
     if ($null -eq $OutputParameters) { $OutputParameters = [ordered]@{} }
     $envelope = [ordered]@{
         Operation = $Operation
-        RowsAffected = $rowsAffected
+        RowsAffected = ConvertTo-AzureSqlJsonValue $rowsAffected
         OutputParameters = ConvertTo-AzureSqlJsonValue $OutputParameters
         ResultSets = @($sets)
     }
