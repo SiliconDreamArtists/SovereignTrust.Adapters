@@ -1,17 +1,34 @@
 function New-AzureSqlConnectionBuilder {
     param([object]$Adapter)
 
-    $resource = Get-AzureSqlObjectValue (Get-AzureSqlObjectValue $Adapter 'Configuration') 'Resource'
+    $configuration = Get-AzureSqlObjectValue $Adapter 'Configuration'
+    $resource = Get-AzureSqlObjectValue $configuration 'Resource'
     if ($resource -isnot [string] -or [string]::IsNullOrWhiteSpace($resource)) {
-        throw 'Azure SQL requires a hydrated connection resource.'
+        throw 'Azure SQL requires a database resource or hydrated connection resource.'
     }
 
-    try {
-        $builder = [Microsoft.Data.SqlClient.SqlConnectionStringBuilder]::new($resource)
+    if ($resource -notmatch '[=;]') {
+        # A plain Resource names the database. Addresses supplies one SQL host.
+        # Assign typed builder properties so neither value can inject options.
+        $addresses = @(Get-AzureSqlObjectValue $configuration 'Addresses')
+        if ($resource -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$' -or
+            $addresses.Count -ne 1 -or $addresses[0] -isnot [string] -or
+            $addresses[0] -cnotmatch '^[A-Za-z0-9][A-Za-z0-9.-]*\.database\.windows\.net$') {
+            throw 'Azure SQL database resource requires one valid Azure SQL server address.'
+        }
+        $builder = [Microsoft.Data.SqlClient.SqlConnectionStringBuilder]::new()
+        $builder['Data Source'] = $addresses[0]
+        $builder['Initial Catalog'] = $resource
+        $builder['Authentication'] = 'Active Directory Default'
     }
-    catch {
-        # SqlClient parse errors can quote the supplied resource. Never forward them.
-        throw 'Azure SQL connection resource is invalid.'
+    else {
+        try {
+            $builder = [Microsoft.Data.SqlClient.SqlConnectionStringBuilder]::new($resource)
+        }
+        catch {
+            # SqlClient parse errors can quote the supplied resource. Never forward them.
+            throw 'Azure SQL connection resource is invalid.'
+        }
     }
 
     if ([string]::IsNullOrWhiteSpace($builder.DataSource) -or

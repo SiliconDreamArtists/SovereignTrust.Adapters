@@ -40,6 +40,29 @@ function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { thr
         $managed.UserID -ne '11111111-1111-1111-1111-111111111111') {
         throw 'Managed identity configuration failed.'
     }
+    $direct = New-AzureSqlConnectionBuilder ([pscustomobject]@{ Configuration = [pscustomobject]@{
+        Resource = 'sda-fusion'; Addresses = @('sda-dev.database.windows.net')
+    } })
+    if ($direct.DataSource -cne 'sda-dev.database.windows.net' -or $direct.InitialCatalog -cne 'sda-fusion' -or
+        [string]$direct.Authentication -cne 'ActiveDirectoryDefault' -or $direct.TrustServerCertificate -or
+        [string]$direct.Encrypt -in @('False','Optional')) {
+        throw 'Direct passwordless database configuration was not built securely.'
+    }
+    foreach ($invalidDirect in @(
+        @{ Resource='sda-fusion'; Addresses=@('https://sda-dev.database.windows.net') },
+        @{ Resource='sda-fusion'; Addresses=@('sda-dev.database.windows.net','other.database.windows.net') },
+        @{ Resource='sda-fusion;Password=synthetic-password'; Addresses=@('sda-dev.database.windows.net') },
+        @{ Resource='sda-fusion'; Addresses=@('sda-dev.database.windows.net;Trust Server Certificate=True') }
+    )) {
+        try {
+            $null = New-AzureSqlConnectionBuilder ([pscustomobject]@{ Configuration = [pscustomobject]$invalidDirect })
+            throw 'Invalid direct database configuration was accepted.'
+        }
+        catch {
+            if ($_.Exception.Message -eq 'Invalid direct database configuration was accepted.' -or
+                $_.Exception.Message -match 'synthetic-password') { throw }
+        }
+    }
     foreach ($invalid in @(
         $null, '', 'Server=sql.example.test;Database=AppDb',
         'Server=sql.example.test;Authentication=Active Directory Default',

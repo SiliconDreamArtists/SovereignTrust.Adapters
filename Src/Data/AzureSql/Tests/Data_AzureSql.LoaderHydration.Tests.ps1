@@ -12,7 +12,7 @@ function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { thr
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 100
 $sourceJacket = @($config.Agents | Where-Object Name -eq 'sdadev01')[0].Roles.SDAWorkItems.Adapters |
     Where-Object Name -eq 'SDAFusionDatabase' | Select-Object -First 1
-Assert ($null -ne $sourceJacket -and $sourceJacket.Resource -ceq '[Storage.Secrets.Read.sdafusion-sqldatabase|]') 'Selected jacket must contain the protected Resource expression.'
+Assert ($null -ne $sourceJacket -and $sourceJacket.Resource -ceq 'sda-fusion') 'Selected jacket must name the configured database.'
 
 $global:AzureSqlHydrationObserved = $false
 $global:AzureSqlHydrationBoundaryCount = 0
@@ -35,18 +35,19 @@ $foundation = Get-Module SovereignTrust.Foundation
         }
         $global:AzureSqlHydrationBoundaryCount++
         $merged = $ItemSignal.GetJacket().GetResult()
-        if ($merged.Resource -cne '[Storage.Secrets.Read.sdafusion-sqldatabase|]' -or
+        if ($merged.Resource -cne 'sda-fusion' -or
             $merged.VirtualPath -cne 'SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full' -or
-            $merged.Addresses[0] -cne 'https://sda-dev.vault.azure.net/') {
-            throw 'Hydration boundary did not receive the selected protected jacket intact.'
+            $merged.Addresses[0] -cne 'sda-dev.database.windows.net') {
+            throw 'Hydration boundary did not receive the selected jacket intact.'
         }
         $global:AzureSqlHydrationObserved = $true
         $hydrated = [PSCustomObject]@{
             Name = $merged.Name
             VirtualPath = $merged.VirtualPath
             IsMapped = $merged.IsMapped
-            Resource = 'synthetic-hydrated-resource'
+            Resource = $merged.Resource
             Addresses = @($merged.Addresses)
+            HydrationMarker = 'synthetic-loader-handoff'
         }
         $result = [Signal]::Start('AzureSqlHydration.Synthetic') | Select-Object -Last 1
         $result.SetResult($hydrated) | Out-Null
@@ -80,10 +81,11 @@ if ($resolution.Failure() -or -not $resolution.HasResult()) {
 Assert ($global:AzureSqlHydrationObserved -and $global:AzureSqlHydrationBoundaryCount -eq 1) 'Loader hydration boundary did not run exactly once.'
 $adapter = $resolution.GetResult()
 Assert ($adapter.GetType().Name -ceq 'Data_AzureSql') 'Loader did not create Data_AzureSql.'
-Assert ($adapter.Configuration.Resource -ceq 'synthetic-hydrated-resource') 'Construct did not receive hydrated Resource.'
+Assert ($adapter.Configuration.Resource -ceq 'sda-fusion' -and
+    $adapter.Configuration.HydrationMarker -ceq 'synthetic-loader-handoff') 'Construct did not receive the hydrated jacket.'
 Assert ($adapter.Configuration.VirtualPath -ceq $sourceJacket.VirtualPath -and
-    $adapter.Configuration.Addresses[0] -ceq $sourceJacket.Addresses[0]) 'Construct lost virtual path or Key Vault address.'
-Assert ($sourceJacket.Resource -ceq '[Storage.Secrets.Read.sdafusion-sqldatabase|]') 'Loader changed the selected source jacket.'
+    $adapter.Configuration.Addresses[0] -ceq $sourceJacket.Addresses[0]) 'Construct lost virtual path or SQL address.'
+Assert ($sourceJacket.Resource -ceq 'sda-fusion') 'Loader changed the selected source jacket.'
 
 $registration = Register-AdapterToMappedSlot -ConductorJacketSignal $conductor.Signal `
     -Signal $runSignal -ConductionContext $conductor.Signal -Adapter $adapter | Select-Object -Last 1
@@ -92,7 +94,7 @@ $adapterModule = Get-Module Data_AzureSql
 & $adapterModule {
     Set-Item -Path Function:script:Invoke-AzureSqlExecution -Value {
         param($Adapter, $Slot, $Activity, $Config, $Plan, $ConductionSignal, $ItemSignal)
-        if ($Slot -cne 'FusionDatabase' -or $Adapter.Configuration.Resource -cne 'synthetic-hydrated-resource') {
+        if ($Slot -cne 'FusionDatabase' -or $Adapter.Configuration.Resource -cne 'sda-fusion') {
             throw 'Mapped route did not receive the loaded adapter.'
         }
         return '{"Operation":"Query","RowsAffected":null,"OutputParameters":{},"ResultSets":[]}'

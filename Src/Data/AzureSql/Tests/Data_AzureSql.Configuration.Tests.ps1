@@ -19,8 +19,8 @@ Assert ($named.Count -eq 1 -and $slot.Count -eq 1) 'FusionDatabase mapping must 
 $jacket = $named[0]
 Assert ($jacket.VirtualPath -ceq 'SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full') 'VirtualPath differs from the planned mapping.'
 Assert ($jacket.IsMapped -ceq $true) 'FusionDatabase must be mapped.'
-Assert ($jacket.Resource -ceq '[Storage.Secrets.Read.sdafusion-sqldatabase|]') 'Protected Resource expression differs from the plan.'
-Assert ($jacket.Addresses.Count -eq 1 -and $jacket.Addresses[0] -ceq 'https://sda-dev.vault.azure.net/') 'Key Vault address differs from the plan.'
+Assert ($jacket.Resource -ceq 'sda-fusion') 'Database Resource differs from the approved configuration.'
+Assert ($jacket.Addresses.Count -eq 1 -and $jacket.Addresses[0] -ceq 'sda-dev.database.windows.net') 'SQL server address differs from the approved configuration.'
 
 $readmePath = Join-Path $PSScriptRoot '../README.md'
 $readme = Get-Content -LiteralPath $readmePath -Raw

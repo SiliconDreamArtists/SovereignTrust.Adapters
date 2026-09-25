@@ -1,12 +1,12 @@
--- Provisioning-owner review template. Do not run against a shared database.
--- Replace both sqlcmd variables with the approved dedicated target before use.
+-- Dedicated AzureSql integration fixture for the approved sda-fusion database.
+-- Provisioning uses an identity with DDL rights; the live test identity must be restricted.
 -- The live test identity must not execute this script.
-:setvar ApprovedDatabase "REPLACE_WITH_APPROVED_INTEGRATION_DATABASE"
-:setvar DedicatedSchema "sda_azure_sql_it_REPLACE_WITH_APPROVED_SUFFIX"
+:setvar ApprovedDatabase "sda-fusion"
+:setvar DedicatedSchema "test_sda_azure_sql_it_adapter"
 
 IF DB_NAME() <> N'$(ApprovedDatabase)'
     THROW 51000, 'Connected database is not the approved integration database.', 1;
-IF N'$(DedicatedSchema)' NOT LIKE N'sda_azure_sql_it[_]%'
+IF N'$(DedicatedSchema)' NOT LIKE N'test[_]sda[_]azure[_]sql[_]it[_]%'
    OR PATINDEX(N'%[^A-Za-z0-9_]%', N'$(DedicatedSchema)') > 0
     THROW 51001, 'Dedicated schema name is invalid.', 1;
 IF SCHEMA_ID(N'$(DedicatedSchema)') IS NOT NULL
@@ -64,5 +64,7 @@ END;
 GO
 
 -- Grant the test principal only SELECT and DELETE on this table,
--- EXECUTE and VIEW DEFINITION on this procedure, plus minimum schema visibility.
+-- EXECUTE on this procedure, plus minimum schema visibility. Object-scoped
+-- VIEW DEFINITION permits direct fixture review by the live test identity;
+-- otherwise provide current provisioning-owner evidence.
 -- Review effective permissions and absence of triggers before enabling the suite.

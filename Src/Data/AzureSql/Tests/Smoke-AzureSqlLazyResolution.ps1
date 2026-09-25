@@ -12,7 +12,7 @@ function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { thr
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 100
 $agent = @($config.Agents | Where-Object Name -eq 'sdadev01')[0]
 $sourceJacket = @($agent.Roles.SDAWorkItems.Adapters | Where-Object Name -eq 'SDAFusionDatabase')[0]
-Assert ($null -ne $sourceJacket -and $sourceJacket.Resource -ceq '[Storage.Secrets.Read.sdafusion-sqldatabase|]') 'The production configuration jacket was not selected.'
+Assert ($null -ne $sourceJacket -and $sourceJacket.Resource -ceq 'sda-fusion' -and $sourceJacket.Addresses[0] -ceq 'sda-dev.database.windows.net') 'The production configuration jacket was not selected.'
 
 $bootstrap = [Signal]::Start('AzureSqlLazy.Bootstrap') | Select-Object -Last 1
 $bootstrap.SetResult([pscustomobject]@{}) | Out-Null
@@ -52,7 +52,7 @@ $foundation = Get-Module SovereignTrust.Foundation
                 Set-Item Function:script:Invoke-AzureSqlExecution -Value {
                     param($Adapter, $Slot, $Activity, $Config, $Plan, $NormalizedWrite, $ConductionSignal, $ItemSignal)
                     if ($Slot -cne 'FusionDatabase' -or $Activity -cne 'Query' -or
-                        $Adapter.Configuration.Resource -cne 'Server=sql.example.test;Database=TestDb;Authentication=Active Directory Default') {
+                        $Adapter.Configuration.Resource -cne 'sda-fusion' -or $Adapter.Configuration.Addresses[0] -cne 'sda-dev.database.windows.net') {
                         throw 'Lazy route did not preserve the hydrated adapter.'
                     }
                     return '{"Operation":"Query","RowsAffected":null,"OutputParameters":{},"ResultSets":[]}'
@@ -66,11 +66,12 @@ $foundation = Get-Module SovereignTrust.Foundation
         if ($Slot -cne 'Hydration' -or $Activity -cne 'Invoke') { throw 'Unexpected hydration invocation.' }
         $global:AzureSqlLazyHydrationCalls++
         $merged = $ItemSignal.GetJacket().GetResult()
-        if ($merged.Resource -cne '[Storage.Secrets.Read.sdafusion-sqldatabase|]') { throw 'The protected jacket was not passed to hydration.' }
+        if ($merged.Resource -cne 'sda-fusion') { throw 'The configured jacket was not passed to hydration.' }
         $hydrated = [pscustomobject]@{
             Name = $merged.Name; VirtualPath = $merged.VirtualPath; IsMapped = $merged.IsMapped
-            Resource = 'Server=sql.example.test;Database=TestDb;Authentication=Active Directory Default'
+            Resource = $merged.Resource
             Addresses = @($merged.Addresses)
+            HydrationMarker = 'synthetic-lazy-handoff'
         }
         $result = [Signal]::Start('AzureSqlLazy.Hydrated') | Select-Object -Last 1
         $result.SetResult($hydrated) | Out-Null
@@ -98,5 +99,6 @@ Assert ($global:AzureSqlLazyHydrationCalls -eq 1) 'Hydration did not run exactly
 Assert ($global:AzureSqlLazyFactoryCalls -eq 1) 'Production resolution did not invoke Resolve-Data_AzureSql exactly once.'
 $resolved = $registration.GetResult()
 Assert ($resolved.State -eq 'Resolved' -and $resolved.Instance.GetType().Name -ceq 'Data_AzureSql') 'The lazy registration did not construct Data_AzureSql.'
-Assert ($resolved.Instance.Configuration.Resource -ceq 'Server=sql.example.test;Database=TestDb;Authentication=Active Directory Default') 'Construct did not receive the hydrated jacket.'
+Assert ($resolved.Instance.Configuration.Resource -ceq 'sda-fusion' -and $resolved.Instance.Configuration.Addresses[0] -ceq 'sda-dev.database.windows.net' -and
+    $resolved.Instance.Configuration.HydrationMarker -ceq 'synthetic-lazy-handoff') 'Construct did not receive the hydrated jacket.'
 Write-Output 'PASS: initially unloaded, production lazy registration, packaged module import, hydration, Construct, and mapped route.'

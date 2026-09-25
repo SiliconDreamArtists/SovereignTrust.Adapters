@@ -17,14 +17,36 @@ foreach ($relativePath in $inventory.Files) {
     }
 }
 
-$script:AzureSqlDependencyRoot = $dependencyRoot
-$script:AzureSqlAssemblyResolver = [System.Func[System.Runtime.Loader.AssemblyLoadContext,System.Reflection.AssemblyName,System.Reflection.Assembly]] {
-    param($context, $name)
-    $candidate = Join-Path $script:AzureSqlDependencyRoot ($name.Name + '.dll')
-    if (Test-Path -LiteralPath $candidate) { return $context.LoadFromAssemblyPath($candidate) }
-    return $null
+if (-not ([System.Management.Automation.PSTypeName]'SovereignTrustAzureSqlAssemblyResolver').Type) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
+using System.Threading;
+
+public static class SovereignTrustAzureSqlAssemblyResolver
+{
+    private static string root;
+    private static int registered;
+
+    public static void Register(string dependencyRoot)
+    {
+        Volatile.Write(ref root, dependencyRoot);
+        if (Interlocked.Exchange(ref registered, 1) == 0)
+            AssemblyLoadContext.Default.Resolving += Resolve;
+    }
+
+    private static Assembly Resolve(AssemblyLoadContext context, AssemblyName name)
+    {
+        string dependencyRoot = Volatile.Read(ref root);
+        string candidate = Path.Combine(dependencyRoot, name.Name + ".dll");
+        return File.Exists(candidate) ? context.LoadFromAssemblyPath(candidate) : null;
+    }
 }
-[System.Runtime.Loader.AssemblyLoadContext]::Default.add_Resolving($script:AzureSqlAssemblyResolver)
+'@
+}
+[SovereignTrustAzureSqlAssemblyResolver]::Register($dependencyRoot)
 try {
     $providerPath = Join-Path $dependencyRoot 'Microsoft.Data.SqlClient.dll'
     $provider = [System.Runtime.Loader.AssemblyLoadContext]::Default.LoadFromAssemblyPath($providerPath)
@@ -32,6 +54,5 @@ try {
     $null = $provider.GetType('Microsoft.Data.SqlClient.SqlConnectionStringBuilder', $true)
 }
 catch {
-    [System.Runtime.Loader.AssemblyLoadContext]::Default.remove_Resolving($script:AzureSqlAssemblyResolver)
     throw "AzureSql packaged provider could not be loaded: $($_.Exception.Message)"
 }

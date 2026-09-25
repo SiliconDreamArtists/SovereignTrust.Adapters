@@ -159,25 +159,25 @@ Configured adapter jacket:
     "Name": "SDAFusionDatabase",
     "VirtualPath": "SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full",
     "IsMapped": true,
-    "Resource": "[Storage.Secrets.Read.sdafusion-sqldatabase|]",
+    "Resource": "sda-fusion",
     "Addresses": [
-        "https://sda-dev.vault.azure.net/"
+        "sda-dev.database.windows.net"
     ]
 }
 ```
 
-Configuration responsibilities follow the AzureStorageAccount convention:
+Configuration responsibilities for this approved passwordless mapping:
 
 - `VirtualPath` selects the `AzureSql` adapter implementation and registers it in the `FusionDatabase` slot.
-- `Resource` is hydrated through `Storage.Secrets.Read` and supplies the protected Azure SQL connection resource at runtime.
-- `Addresses` remains the configured Key Vault address for this jacket; it is not an Azure SQL server endpoint and must not be used as the SQL data source.
+- `Resource` names the Azure SQL database (`sda-fusion`).
+- `Addresses` supplies exactly one Azure SQL server (`sda-dev.database.windows.net`).
 - `Plan.Config` supplies the command or procedure and its parameters.
 
-Do not store a resolved connection string, password, client secret, or access token in this file. The adapter must receive only the hydrated runtime value of `Resource`.
+Do not store a password, client secret, or access token in this file. The production loader still passes the jacket through hydration before construction. A protected SqlClient connection resource remains a supported alternate configuration.
 
 ## 5. Implement secure connection construction
 
-Read the hydrated connection resource from the adapter jacket's `Resource` value and parse it with `Microsoft.Data.SqlClient.SqlConnectionStringBuilder`. Do not construct a connection string through textual concatenation and do not treat the jacket's Key Vault `Addresses` value as a SQL endpoint.
+For the configured passwordless form, use the database name in `Resource` and the single server in `Addresses` to assign typed `Microsoft.Data.SqlClient.SqlConnectionStringBuilder` properties with `Active Directory Default` authentication. Validate both values before use. For the protected connection-resource form, parse the hydrated `Resource` using the builder and ignore `Addresses` as a SQL endpoint. Never construct a connection string through textual concatenation.
 
 The protected resource may select any explicitly supported SqlClient authentication mode. The preferred passwordless modes are:
 
@@ -196,10 +196,10 @@ Application Name=SovereignTrust.Adapters.Data.AzureSql
 
 Connection handling must:
 
-- Validate that the hydrated `Resource` is present and is a valid supported connection resource.
-- Require a SQL data source and initial catalog after parsing the resource.
+- Validate the plain database plus single SQL server form or the protected connection-resource form.
+- Require a SQL data source and initial catalog after building or parsing the resource.
 - Enforce encryption and reject insecure certificate-trust settings unless an explicit, separately approved development override exists.
-- Apply the connection timeout from the protected resource or a safe adapter default.
+- Apply the connection timeout from the protected resource, when used, or a safe adapter default.
 - Open a new connection for an invocation and dispose it deterministically.
 - Avoid logging connection strings, credentials, tokens, or parameter values.
 - Return authentication, firewall, DNS, timeout, and provider errors through a failed signal.
@@ -419,6 +419,8 @@ The live suite requires:
 - A contained database user with least-privilege permissions.
 - Dedicated test tables and stored procedures that can be safely reset.
 
+For the approved `sda-fusion` target, the fixture schema is `test_sda_azure_sql_it_adapter`. The live suite must still use a contained database identity limited to that fixture; the provisioning identity's DDL rights do not satisfy the live-suite prerequisite.
+
 ## Recommended implementation order
 
 1. Remove the `Condenser.Data` route and any provisional DataCondenser implementation created solely for AzureSql.
@@ -566,7 +568,7 @@ Perform Prompt:
 Prompt D (Steps 6-7)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable repository guidance. Build on steps 1-5 and implement steps 6-7 of Recommended implementation order.
 
-Implement secure connection construction from the hydrated adapter jacket Resource using Microsoft.Data.SqlClient.SqlConnectionStringBuilder. Require a valid supported resource, SQL data source, and initial catalog. Never use the Key Vault Addresses value as a SQL endpoint. Apply encryption, certificate validation, application name, and connection timeout requirements from the plan. Support and document the selected authentication modes, including Active Directory Default and Active Directory Managed Identity. Do not introduce an insecure development override without the separate approval required by the plan. Keep connection strings, credentials, access tokens, and parameter values out of logs and errors.
+Implement secure connection construction using Microsoft.Data.SqlClient.SqlConnectionStringBuilder. Accept the configured database Resource plus one Azure SQL server Addresses value with Active Directory Default, or a protected connection-string Resource with an explicitly supported authentication mode. Require data source and initial catalog. Apply encryption, certificate validation, application name, and connection timeout requirements. Keep connection strings, credentials, access tokens, and parameter values out of logs and errors.
 
 Implement explicit SqlParameter construction from canonical descriptors, including SqlDbType, Size, Precision, Scale, Direction, DBNull.Value, output/input-output parameters, and return values. Reject invalid types, directions, conversions, and unsupported structured parameters. If dictionary compatibility is retained, use conservative inference and document its limitations. Keep parameter values separate from SQL text and procedure names.
 
@@ -578,7 +580,7 @@ Review Prompt:
 ```text
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt D and the review instructions, and applicable repository guidance. Review steps 6-7 without modifying implementation files. Inspect real connection and parameter helpers and run their focused tests through the internal execution boundary.
 
-Verify connection construction uses the hydrated Resource and Microsoft.Data.SqlClient.SqlConnectionStringBuilder, requires data source and initial catalog, and never derives the SQL endpoint from Addresses. Check encryption enforcement, certificate validation, application name, connection timeout, rejection of invalid resources, and supported authentication settings, including Default and Managed Identity with optional user-assigned identity. Ensure any insecure override has the explicit approval required by the plan. Inspect failure paths for accidental disclosure using synthetic secret values; do not retrieve operational secrets for this review.
+Verify construction of both the direct passwordless database/server jacket and protected connection-resource form with Microsoft.Data.SqlClient.SqlConnectionStringBuilder. Check encryption, certificate validation, application name, timeout, invalid values, and supported Default and Managed Identity modes. Inspect failure paths for accidental disclosure using synthetic secret values.
 
 Inspect actual SqlParameter objects produced by tests. Verify names, explicit types, size, precision, scale, DBNull, input/output/input-output/return directions, conversion failures, and rejection of unsupported structured parameters. If dictionary compatibility exists, check conservative inference and descriptor precedence. Confirm parameter values remain separate from command text and procedure names and caller values remain unchanged.
 
@@ -650,9 +652,9 @@ Perform Prompt:
  Prompt G (Steps 13-14)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md and the applicable guidance in each affected repository. Build on steps 1-12 and implement steps 13-14 of Recommended implementation order.
 
-Inspect SDAFusion-Content/SDA/Config/SDAFusionApp.Json and add or correct the sdadev01 / SDAWorkItems adapter mapping without duplicating an existing jacket or disturbing unrelated configuration. Use the plan's exact SDAFusionDatabase jacket, SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, protected Resource expression, and Key Vault Addresses value.
+Inspect SDAFusion-Content/SDA/Config/SDAFusionApp.Json and add or correct the sdadev01 / SDAWorkItems adapter mapping without duplicating an existing jacket or disturbing unrelated configuration. Use the approved SDAFusionDatabase jacket, SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, Resource=sda-fusion, and Addresses=[sda-dev.database.windows.net].
 
-Validate the production loader's mapping and hydration contract: the implementation resolves into FusionDatabase, Construct receives the hydrated jacket, and Resource supplies the protected SQL connection resource. Addresses remains the Key Vault address. Do not retrieve or print operational secrets merely to validate configuration structure; exercise hydration through the appropriate test boundary and reserve live validation for the gated suite.
+Validate the production loader's mapping and hydration contract: the implementation resolves into FusionDatabase, Construct receives the hydrated jacket, and the connection builder uses its database Resource and SQL server Addresses. Exercise hydration through the appropriate test boundary and reserve live validation for the gated suite.
 
 Update affected plans, examples, and adapter documentation to use Data.FusionDatabase directly. Include JSON records, CSV records, nested documents, typed Query/Delete parameters, timeouts, the result envelope, dependency packaging, authentication configuration, and any supported transaction override. Clearly mark placeholders and include no operational credentials. Remove stale AzureSql mock and Condenser.Data instructions while preserving any independent consumers identified earlier.
 
@@ -665,7 +667,7 @@ Review Prompt:
 Review  Prompt G (Steps 13-14)
 Read SovereignTrust.Adapters/docs/AzureSql-Data-Adapter-Implementation-Plan.md, including Perform Prompt G and the review instructions, and applicable guidance in affected repositories. Review steps 13-14 without modifying implementation files. Inspect configuration, loader contracts, examples, documentation, and their diffs together.
 
-Verify the sdadev01 / SDAWorkItems mapping exists exactly once with the plan's SDAFusionDatabase name, exact SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, protected Resource expression, and Key Vault Addresses. Confirm this implementation introduced no unrelated changes to agents, roles, or jackets; distinguish pre-existing and unrelated workspace edits. Trace registration into FusionDatabase and hydration into Construct; ensure SQL connection construction consumes hydrated Resource and never uses Addresses as its SQL endpoint. Use synthetic values for offline hydration checks and do not retrieve or print operational secrets.
+Verify the sdadev01 / SDAWorkItems mapping exists exactly once with the approved SDAFusionDatabase name, exact SovereignTrust.Adapters.Data.AzureSql.FusionDatabase.Persistent.Full virtual path, IsMapped=true, Resource=sda-fusion, and Addresses=[sda-dev.database.windows.net]. Confirm this implementation introduced no unrelated changes to agents, roles, or jackets; distinguish pre-existing and unrelated workspace edits. Trace registration into FusionDatabase and hydration into Construct; ensure SQL connection construction uses the hydrated database and server values. Use synthetic values for offline hydration checks and do not retrieve or print operational secrets.
 
 Validate example syntax and consistency with the implemented contract for direct Data.FusionDatabase routing, JSON/CSV/document input, typed parameters, timeouts, results, authentication, packaging, and any transaction override. Check placeholders are unmistakable, secrets are absent, and stale mock/Condenser.Data/Config.DataAdapter instructions have been removed from active AzureSql examples and documentation. Preserve legitimate independent consumers and distinguish historical material from active instructions.
 

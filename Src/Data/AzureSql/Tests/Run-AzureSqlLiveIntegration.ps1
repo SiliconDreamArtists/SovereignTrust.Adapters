@@ -8,6 +8,7 @@ if ($TargetProbe -and $FixtureProbe) { throw 'Choose one read-only probe mode.' 
 $foundationManifest = Join-Path $PSScriptRoot '../../../../../SovereignTrust.Foundation/Src/PowerShell/SovereignTrust.Foundation.psd1'
 $configPath = Join-Path $PSScriptRoot '../../../../../SDAFusion-Content/SDA/Config/SDAFusionApp.Json'
 $moduleRoot = (Resolve-Path (Join-Path $PSScriptRoot '../../../../..')).ProviderPath
+. (Join-Path $PSScriptRoot 'AzureSqlFixtureGuard.ps1')
 Import-Module (Resolve-Path $foundationManifest).ProviderPath -Force
 if (Get-Module Data_AzureSql) { throw 'Live suite must start with AzureSql unloaded.' }
 
@@ -19,7 +20,7 @@ if (-not $TargetProbe -and -not $FixtureProbe) {
     if ($env:SDA_AZURESQL_LIVE_IDENTITY_READY -cne '1') { $missing.Add('authenticated least-privilege identity') }
     if ($env:SDA_AZURESQL_LIVE_FIXTURES_READY -cne '1') { $missing.Add('pre-provisioned, safely resettable fixtures') }
 }
-if (-not $TargetProbe -and $env:SDA_AZURESQL_LIVE_SCHEMA -cnotmatch '^sda_azure_sql_it_[A-Za-z0-9_]+$') { $missing.Add('dedicated sda_azure_sql_it_* schema name') }
+if (-not $TargetProbe -and $env:SDA_AZURESQL_LIVE_SCHEMA -cnotmatch '^test_sda_azure_sql_it_[A-Za-z0-9_]+$') { $missing.Add('dedicated test_sda_azure_sql_it_* schema name') }
 if ([string]::IsNullOrWhiteSpace($env:SDA_AZURESQL_LIVE_SERVER)) { $missing.Add('approved integration server name') }
 if ([string]::IsNullOrWhiteSpace($env:SDA_AZURESQL_LIVE_DATABASE)) { $missing.Add('expected integration database name') }
 if ($missing.Count -gt 0) {
@@ -29,7 +30,7 @@ if ($missing.Count -gt 0) {
 }
 
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
-function Set-LiveStage([string]$Stage, [string]$Cleanup = $null, [string]$Result = $null) {
+function Set-LiveStage([string]$Stage, [object]$Cleanup = $null, [object]$Result = $null) {
     $script:stage = $Stage
     if ($null -eq $script:liveRecord) { return }
     $script:liveRecord.Stage = $Stage
@@ -45,11 +46,54 @@ function Get-ArtifactIdentity([string]$Root) {
     }
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($entries -join "`n"))))
 }
+function Get-SafeFixtureQueryDiagnostic([object]$Config) {
+    $connection = $null
+    $command = $null
+    $reader = $null
+    try {
+        $module = & (Get-Module SovereignTrust.Foundation) { Get-Module Data_AzureSql }
+        $builder = & $module { param($adapter) New-AzureSqlConnectionBuilder -Adapter $adapter } $registration.Instance
+        $connection = [Microsoft.Data.SqlClient.SqlConnection]::new($builder.ConnectionString)
+        $connection.Open()
+        $command = $connection.CreateCommand()
+        $command.CommandText = $Config.CommandText
+        foreach ($descriptor in $Config.Parameters) {
+            $parameter = $command.Parameters.Add($descriptor.Name, [System.Data.SqlDbType]::NVarChar, $descriptor.Size)
+            $parameter.Value = $descriptor.Value
+        }
+        $reader = $command.ExecuteReader()
+        return 'DirectQuerySucceeded'
+    }
+    catch {
+        $cause = $_.Exception
+        $sqlNumber = 'NA'
+        $deniedObject = 'Unknown'
+        for ($depth = 0; $depth -lt 5 -and $null -ne $cause; $depth++) {
+            if ($cause -is [Microsoft.Data.SqlClient.SqlException]) {
+                $sqlNumber = $cause.Number
+                foreach ($knownObject in @('sql_expression_dependencies','columns','types','parameters','triggers','tables','schemas','AzureSqlAdapterFixture','usp_IngestAzureSqlAdapterFixture')) {
+                    if ($cause.Message.Contains($knownObject)) { $deniedObject = $knownObject; break }
+                }
+                break
+            }
+            $cause = $cause.InnerException
+        }
+        return "ExceptionType=$($_.Exception.GetType().Name);SqlNumber=$sqlNumber;DeniedObject=$deniedObject"
+    }
+    finally {
+        if ($null -ne $reader) { $reader.Dispose() }
+        if ($null -ne $command) { $command.Dispose() }
+        if ($null -ne $connection) { $connection.Dispose() }
+    }
+}
 function Invoke-LivePlan([string]$Activity, [object]$Config) {
     $plan = [pscustomobject]@{ Adapter = 'Data.FusionDatabase'; Activity = $Activity; Config = $Config }
     $item = [Signal]::Start('AzureSqlLive.Item') | Select-Object -Last 1
     $item.SetPointer($script:conductor.Signal.GetPointer()) | Out-Null
     $signal = Invoke-MappedAdapter -Adapter $plan.Adapter -Activity $Activity -Signal $script:runSignal -Plan $plan -ItemSignal $item | Select-Object -Last 1
+    if ($signal.Failure() -and $script:stage -eq 'fixture-preflight' -and $FixtureProbe) {
+        $script:liveRecord.PreflightDiagnostic = Get-SafeFixtureQueryDiagnostic $Config
+    }
     Assert (-not $signal.Failure() -and $signal.HasResult()) "$Activity returned a failed signal."
     $json = $signal.GetResult()
     Assert ($json -is [string]) "$Activity did not return JSON text."
@@ -71,7 +115,8 @@ try {
     $sqlJacket = @($role.Adapters | Where-Object Name -eq 'SDAFusionDatabase')[0]
     $secretJacket = @($role.Adapters | Where-Object { $_.VirtualPath -ceq 'SovereignTrust.Adapters.Storage.AzureKeyVault.Secrets.Persistent.Read' -and $_.Name -ceq 'SDASecrets' })[0]
     Assert ($null -ne $sqlJacket -and $null -ne $secretJacket) 'Production configuration lacks SQL or Secrets jacket.'
-    Assert ($sqlJacket.Resource -ceq '[Storage.Secrets.Read.sdafusion-sqldatabase|]') 'SQL jacket resource expression differs from the production contract.'
+    Assert ($sqlJacket.Resource -ceq 'sda-fusion' -and @($sqlJacket.Addresses).Count -eq 1 -and
+        $sqlJacket.Addresses[0] -ceq 'sda-dev.database.windows.net') 'SQL jacket differs from the approved server and database.'
 
     Set-LiveStage 'foundation-bootstrap'
     $bootstrap = [Signal]::Start('AzureSqlLive.Bootstrap') | Select-Object -Last 1
@@ -146,7 +191,7 @@ try {
         Stage = 'target-validation'
         FailedStage = $null
         FailureClass = $null
-        Cleanup = 'NotStarted'
+        Cleanup = if ($TargetProbe -or $FixtureProbe) { 'NotNeeded' } else { 'NotStarted' }
         Result = 'Running'
     }
     Set-LiveStage 'target-validation'
@@ -162,21 +207,41 @@ try {
     $loadedModule = & (Get-Module SovereignTrust.Foundation) { Get-Module Data_AzureSql }
     Assert ($null -ne $loadedModule) 'Production resolver did not import AzureSql.'
     $builder = & $loadedModule { param($adapter) New-AzureSqlConnectionBuilder -Adapter $adapter } $registration.Instance
-    Assert ($builder.DataSource -ieq $env:SDA_AZURESQL_LIVE_SERVER -and $builder.InitialCatalog -ieq $env:SDA_AZURESQL_LIVE_DATABASE) 'Protected resource does not target the approved integration server and database.'
+    Assert ($builder.DataSource -ieq $env:SDA_AZURESQL_LIVE_SERVER -and $builder.InitialCatalog -ieq $env:SDA_AZURESQL_LIVE_DATABASE) 'Configured resource does not target the approved integration server and database.'
     $builder = $null
     if ($TargetProbe) {
+        try {
+            $visibleSchemas = Invoke-LivePlan Query ([pscustomobject]@{
+                CommandText = "SELECT name FROM sys.schemas WHERE name LIKE 'test[_]sda[_]azure[_]sql[_]it[_]%' ORDER BY name"
+                Parameters = @()
+            })
+            $schemaNames = @($visibleSchemas.ResultSets[0].Rows | ForEach-Object name)
+            Write-Output "VISIBLE_DEDICATED_SCHEMAS=$($schemaNames -join ',')"
+        }
+        catch { Write-Output 'VISIBLE_DEDICATED_SCHEMAS=unknown' }
+        try {
+            $roles = Invoke-LivePlan Query ([pscustomobject]@{
+                CommandText = "SELECT IS_ROLEMEMBER('db_owner') AS DbOwner, IS_ROLEMEMBER('db_datawriter') AS DbDataWriter, IS_ROLEMEMBER('db_ddladmin') AS DbDdlAdmin"
+                Parameters = @()
+            })
+            $roleFlags = $roles.ResultSets[0].Rows[0]
+            Write-Output "IDENTITY_ROLE_FLAGS=db_owner:$($roleFlags.DbOwner),db_datawriter:$($roleFlags.DbDataWriter),db_ddladmin:$($roleFlags.DbDdlAdmin)"
+        }
+        catch { Write-Output 'IDENTITY_ROLE_FLAGS=unknown' }
         Set-LiveStage 'complete' -Result 'Passed'
         Write-Output 'PASS: production hydration and lazy resolution reached the approved server and database with authenticated read-only SqlClient execution.'
         exit 0
     }
-    Set-LiveStage 'fixture-validation'
+    Set-LiveStage 'fixture-schema'
     $schemaCheck = Invoke-LivePlan Query ([pscustomobject]@{ CommandText = 'SELECT SCHEMA_ID(@SchemaName) AS SchemaId'; Parameters = @(@{ Name = '@SchemaName'; SqlDbType = 'NVarChar'; Size = 128; Value = $schema }) })
     Assert ($null -ne $schemaCheck.ResultSets[0].Rows[0].SchemaId) 'Dedicated integration schema is unavailable.'
+    Set-LiveStage 'fixture-objects'
     $fixture = Invoke-LivePlan Query ([pscustomobject]@{ CommandText = 'SELECT OBJECT_ID(@TableName, ''U'') AS TableId, OBJECT_ID(@ProcedureName, ''P'') AS ProcedureId'; Parameters = @(
         @{ Name = '@TableName'; SqlDbType = 'NVarChar'; Size = 256; Value = "${schema}.AzureSqlAdapterFixture" },
         @{ Name = '@ProcedureName'; SqlDbType = 'NVarChar'; Size = 256; Value = "${schema}.usp_IngestAzureSqlAdapterFixture" }
     ) })
     Assert ($null -ne $fixture.ResultSets[0].Rows[0].TableId -and $null -ne $fixture.ResultSets[0].Rows[0].ProcedureId) 'Dedicated table and procedure are unavailable.'
+    Set-LiveStage 'fixture-preflight'
     $preflight = Invoke-LivePlan Query ([pscustomobject]@{ CommandText = @'
 SELECT
     (SELECT COUNT(*) FROM sys.columns c JOIN sys.types t ON c.user_type_id=t.user_type_id
@@ -192,9 +257,10 @@ SELECT
         (p.name='@RunId' AND t.name='uniqueidentifier') OR
         (p.name='@Kind' AND t.name='nvarchar'))) AS MatchingParameters,
     (SELECT COUNT(*) FROM sys.triggers WHERE parent_id=OBJECT_ID(@TableName,'U')) AS TriggerCount,
-    (SELECT COUNT(*) FROM sys.sql_expression_dependencies
-       WHERE referencing_id=OBJECT_ID(@ProcedureName,'P') AND
-             (referenced_id IS NULL OR referenced_id<>OBJECT_ID(@TableName,'U'))) AS ExternalDependencies,
+    (SELECT CONVERT(varchar(33),create_date,126)
+       FROM sys.objects WHERE object_id=OBJECT_ID(@ProcedureName,'P')) AS ProcedureCreateTime,
+    (SELECT CONVERT(varchar(33),modify_date,126)
+       FROM sys.objects WHERE object_id=OBJECT_ID(@ProcedureName,'P')) AS ProcedureModifyTime,
     OBJECT_DEFINITION(OBJECT_ID(@ProcedureName,'P')) AS ProcedureDefinition,
     HAS_PERMS_BY_NAME(@TableName,'OBJECT','SELECT') AS CanSelect,
     HAS_PERMS_BY_NAME(@TableName,'OBJECT','DELETE') AS CanDelete,
@@ -213,20 +279,38 @@ SELECT
         @{ Name = '@ProcedureName'; SqlDbType = 'NVarChar'; Size = 256; Value = "${schema}.usp_IngestAzureSqlAdapterFixture" }
     ) })
     $contract = $preflight.ResultSets[0].Rows[0]
-    Assert ($contract.MatchingColumns -eq 5 -and $contract.MatchingParameters -eq 3 -and
-        $contract.TriggerCount -eq 0 -and $contract.ExternalDependencies -eq 0) 'Fixture shape, triggers, or procedure dependencies violate the dedicated contract.'
-    Assert ($contract.CanSelect -eq 1 -and $contract.CanDelete -eq 1 -and $contract.CanExecute -eq 1 -and
-        $contract.CanAlterFixture -ne 1 -and $contract.IsDbOwner -ne 1 -and
-        $contract.IsDbDataWriter -ne 1 -and $contract.IsDbDdlAdmin -ne 1 -and
-        $contract.OtherWritableTables -eq 0) 'The live identity lacks fixture permissions or has unrelated write privileges.'
-    $definition = [string]$contract.ProcedureDefinition
-    Assert ($definition -match '(?i)\bOPENJSON\s*\(' -and $definition -match '(?i)\bINSERT\b' -and
-        $definition -match '(?i)@RunId\b' -and $definition -match '(?i)@Payload\b' -and
-        $definition -notmatch '(?i)\b(EXEC|EXECUTE|UPDATE|DELETE|MERGE|TRUNCATE|DROP)\b') 'Fixture procedure definition requires provisioning-owner review.'
-    $definition = $null
+    if ($FixtureProbe) {
+        Write-Output "FIXTURE_METADATA=columns:$($contract.MatchingColumns),parameters:$($contract.MatchingParameters),triggers:$($contract.TriggerCount),definition_visible:$($null -ne $contract.ProcedureDefinition)"
+        Write-Output "FIXTURE_PERMISSIONS=select:$($contract.CanSelect),delete:$($contract.CanDelete),execute:$($contract.CanExecute),alter:$($contract.CanAlterFixture),db_owner:$($contract.IsDbOwner),db_datawriter:$($contract.IsDbDataWriter),db_ddladmin:$($contract.IsDbDdlAdmin),other_writable_tables:$($contract.OtherWritableTables)"
+    }
+    Set-LiveStage 'fixture-definition'
+    $reviewed = Get-ReviewedAzureSqlFixtureDefinition -TemplatePath (Join-Path $PSScriptRoot 'Provision-AzureSqlLiveFixture.template.sql') `
+        -Database $env:SDA_AZURESQL_LIVE_DATABASE -Schema $schema
+    $binding = [pscustomobject]@{
+        Server = $env:SDA_AZURESQL_LIVE_SERVER
+        Database = $env:SDA_AZURESQL_LIVE_DATABASE
+        Schema = $schema
+        ObjectId = $fixture.ResultSets[0].Rows[0].ProcedureId
+        CreateTime = $contract.ProcedureCreateTime
+        ModifyTime = $contract.ProcedureModifyTime
+    }
+    $fixtureCheck = Test-AzureSqlFixturePreflight -Contract $contract -Reviewed $reviewed `
+        -Binding $binding -EvidencePath $env:SDA_AZURESQL_LIVE_FIXTURE_EVIDENCE
+    if ($fixtureCheck.Status -eq 'Unverified') {
+        Set-LiveStage 'fixture-definition' -Result 'NotReady'
+        if ($fixtureCheck.Method -eq 'LeastPrivilegeNotReady') {
+            Write-Output 'SKIP: fixture identity permissions are not ready for live mutation.'
+        }
+        else {
+            Write-Output "SKIP: fixture definition unverified; method=$($fixtureCheck.Method). Obtain object-scoped metadata access or provisioning-owner evidence for the current object."
+        }
+        exit 77
+    }
+    Assert ($fixtureCheck.Status -eq 'Verified') "Fixture preflight rejected the current object; method=$($fixtureCheck.Method)."
+    if ($FixtureProbe) { Write-Output "FIXTURE_DEFINITION=Verified:$($fixtureCheck.Method);ReviewedSha256=$($reviewed.Sha256)" }
     if ($FixtureProbe) {
         Set-LiveStage 'complete' -Result 'Passed'
-        Write-Output 'PASS: dedicated fixture shape, dependencies, triggers, and visible least-privilege permissions passed read-only preflight.'
+        Write-Output 'PASS: reviewed fixture definition, shape, triggers, and visible least-privilege permissions passed read-only preflight.'
         exit 0
     }
 
@@ -309,11 +393,53 @@ SELECT
     Write-Output 'PASS: live lazy route, genuine SqlClient operations, ingestion, result sets, Delete counts, rollback, JSON boundary, and scoped cleanup.'
 }
 catch {
+    if ($script:stage -eq 'target-validation' -and $null -ne $registration -and
+        $registration.State -eq 'Resolved') {
+        # The adapter deliberately sanitizes failed signals. A separate read-only
+        # Open supplies safe diagnostic metadata without exposing exception text.
+        $probeConnection = $null
+        try {
+            $diagnosticStep = 'module'
+            $diagnosticModule = & (Get-Module SovereignTrust.Foundation) { Get-Module Data_AzureSql }
+            if ($null -eq $diagnosticModule) { throw 'Diagnostic module unavailable.' }
+            $diagnosticStep = 'builder'
+            $diagnosticBuilder = & $diagnosticModule {
+                param($adapter) New-AzureSqlConnectionBuilder -Adapter $adapter
+            } $registration.Instance
+            $diagnosticStep = 'connection'
+            $probeConnection = [Microsoft.Data.SqlClient.SqlConnection]::new($diagnosticBuilder.ConnectionString)
+            $diagnosticStep = 'open'
+            $probeConnection.Open()
+            $script:liveRecord.TargetDiagnostic = 'SqlClientOpenSucceeded'
+        }
+        catch {
+            $cause = $_.Exception
+            $diagnosticKinds = [System.Collections.Generic.List[string]]::new()
+            $diagnosticCategory = 'Unknown'
+            for ($depth = 0; $depth -lt 4 -and $null -ne $cause.InnerException; $depth++) {
+                $diagnosticKinds.Add($cause.GetType().Name)
+                $cause = $cause.InnerException
+            }
+            $kind = $cause.GetType().Name
+            $number = if ($cause -is [Microsoft.Data.SqlClient.SqlException]) { $cause.Number } else { 'NA' }
+            $diagnosticKinds.Add($kind)
+            $safeClassificationText = [string]$cause.Message
+            if ($safeClassificationText -match '(?i)runspace') { $diagnosticCategory = 'Runspace' }
+            elseif ($safeClassificationText -match '(?i)login failed|principal|permission denied') { $diagnosticCategory = 'LoginOrPermission' }
+            elseif ($safeClassificationText -match '(?i)firewall|not allowed to access') { $diagnosticCategory = 'Firewall' }
+            elseif ($safeClassificationText -match '(?i)credential|authentication|token|AzureCli') { $diagnosticCategory = 'Authentication' }
+            elseif ($safeClassificationText -match '(?i)network|tcp|timeout|transport') { $diagnosticCategory = 'Network' }
+            $script:liveRecord.TargetDiagnostic = "Step=$diagnosticStep;Category=$diagnosticCategory;ExceptionTypes=$($diagnosticKinds -join ',');SqlNumber=$number"
+        }
+        finally { if ($null -ne $probeConnection) { $probeConnection.Dispose() } }
+    }
     if ($null -ne $script:liveRecord) {
         if ($null -eq $script:liveRecord.FailedStage) { $script:liveRecord.FailedStage = $script:stage }
-        $script:liveRecord.FailureClass = if ($script:liveRecord.FailedStage -in @('configuration','foundation-bootstrap','secrets-bootstrap','lazy-registration','target-validation','fixture-validation')) { 'EnvironmentOrFixture' } else { 'ScenarioOrAdapterNeedsDiagnosis' }
+        $script:liveRecord.FailureClass = if ($script:liveRecord.TargetDiagnostic -eq 'SqlClientOpenSucceeded') { 'TargetRouteNeedsDiagnosis' }
+            elseif ($script:liveRecord.FailedStage -in @('configuration','foundation-bootstrap','secrets-bootstrap','lazy-registration','target-validation','fixture-schema','fixture-objects','fixture-preflight','fixture-definition')) { 'EnvironmentOrFixture' }
+            else { 'ScenarioOrAdapterNeedsDiagnosis' }
         Set-LiveStage 'failed' -Result 'Failed'
-        Write-Output "FAIL: live Azure SQL class=$($script:liveRecord.FailureClass) stage=$($script:liveRecord.FailedStage) cleanup=$($script:liveRecord.Cleanup) run_id=$($script:liveRecord.RunId) record=$script:recordPath"
+        Write-Output "FAIL: live Azure SQL class=$($script:liveRecord.FailureClass) stage=$($script:liveRecord.FailedStage) cleanup=$($script:liveRecord.Cleanup) diagnostic=$($script:liveRecord.TargetDiagnostic) preflight=$($script:liveRecord.PreflightDiagnostic) run_id=$($script:liveRecord.RunId) record=$script:recordPath"
     }
     else { Write-Output "FAIL: live Azure SQL stage=$script:stage before run ID allocation." }
     exit 1
