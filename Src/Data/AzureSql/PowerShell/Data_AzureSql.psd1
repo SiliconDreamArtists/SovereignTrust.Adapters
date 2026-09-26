@@ -5,7 +5,7 @@
     GUID = '64270e37-29cb-47be-887f-62488436e69e'
     Author = 'Silicon Dream Artists'
     CompanyName = 'Silicon Dream Artists'
-    Copyright = '(c) Silicon Dream Artists. All rights reserved.'
+    Copyright = '(c) Silicon Dream Artists. Current copyright holder: BDDB LLC.'
     Description = 'Azure SQL mapped data adapter with packaged Microsoft.Data.SqlClient dependencies and Write, Query, and Delete operations.'
     PowerShellVersion = '7.4'
     RequiredModules = @('SignalGraph')
@@ -22,6 +22,6 @@
     }; PSData = @{
         Tags = @('Data_AzureSql', 'SovereignTrust', 'Adapters', 'AzureSql')
         LicenseUri = 'https://opensource.org/licenses/MIT'
-        ProjectUri = 'https://github.com/SiliconDreamArtists/SovereignTrust.Adapters'
+        ProjectUri = 'https://github.com/B-D-D-B/SovereignTrust.Adapters'
     } }
 }

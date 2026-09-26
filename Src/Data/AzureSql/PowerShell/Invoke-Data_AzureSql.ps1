@@ -18,10 +18,16 @@ function Invoke-AzureSqlExecution {
     $result = $null
     $committed = $false
     $commitAttempted = $false
+    $rollbackConfirmed = $false
     try {
         $session = New-AzureSqlSession -Adapter $Adapter
         if ($null -eq $session) { throw 'Azure SQL session factory returned no connection.' }
         $session.Open()
+        # Optional trusted destination binding is checked on the very session that will execute.
+        $expectedServer = Get-AzureSqlObjectValue $Config 'ExpectedServer'
+        $expectedDatabase = Get-AzureSqlObjectValue $Config 'ExpectedDatabase'
+        if ($expectedServer -and $session.DataSource -ine $expectedServer) { throw 'Azure SQL destination identity mismatch.' }
+        if ($expectedDatabase -and $session.Database -cne $expectedDatabase) { throw 'Azure SQL destination identity mismatch.' }
         if ($Activity -in @('Write', 'Delete') -and $transactionMode -eq 'Required') {
             $transaction = $session.BeginTransaction()
             if ($null -eq $transaction) { throw 'Azure SQL session returned no transaction.' }
@@ -39,7 +45,7 @@ function Invoke-AzureSqlExecution {
     catch {
         $failure = $_
         if ($null -ne $transaction -and -not $committed) {
-            try { $transaction.Rollback() } catch { <# Preserve the original failure. #> }
+            try { $transaction.Rollback(); $rollbackConfirmed = $true } catch { <# Preserve the original failure. #> }
         }
     }
     finally {
@@ -53,6 +59,7 @@ function Invoke-AzureSqlExecution {
     if ($null -ne $failure) {
         if ($committed) { throw 'Azure SQL operation committed but cleanup failed.' }
         if ($commitAttempted) { throw 'Azure SQL transaction outcome is uncertain.' }
+        if ($rollbackConfirmed) { $failure.Exception.Data["SovereignTrust.Sql.RollbackConfirmed"] = $true }
         throw $failure
     }
     return $result
@@ -109,6 +116,10 @@ function Invoke-Data_AzureSql {
             default { "AzureSql $Activity failed. Check adapter configuration and operation inputs." }
         }
         $null = $opSignal.LogCritical($message)
+        if ($_.Exception.Data["SovereignTrust.Sql.RollbackConfirmed"] -eq $true -and $null -ne $normalizedWrite) {
+            $digest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($normalizedWrite.Json)))
+            $opSignal.SetResult((@{ Outcome="RolledBack"; PayloadSha256=$digest; InvocationId=[guid]::NewGuid().ToString() } | ConvertTo-Json -Compress))
+        }
     }
     return $opSignal
 }
